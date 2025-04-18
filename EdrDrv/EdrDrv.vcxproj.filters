@@ -1,0 +1,61 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Driver Files">
+      <UniqueIdentifier>{8E41214B-6785-4CFE-B992-037D68949A14}</UniqueIdentifier>
+      <Extensions>inf;inv;inx;mof;mc;</Extensions>
+    </Filter>
+    <Filter Include="Source Files\drv">
+      <UniqueIdentifier>{08bf82d8-eab8-4233-91ee-e521eb9a54df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\commons">
+      <UniqueIdentifier>{2010fcc6-37f2-4b2c-8a55-b88c8a7ca767}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\process_monitor">
+      <UniqueIdentifier>{d59db1a6-69b3-4e9e-b65b-f41ddb02d3b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\utils">
+      <UniqueIdentifier>{ea5795c7-5cfa-48a0-91fa-738cb63d6e3b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\drv\drv.cpp">
+      <Filter>Source Files\drv</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\KUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\process_monitor\ProcessMonitor.cpp">
+      <Filter>Source Files\process_monitor</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\drv\drv.h">
+      <Filter>Source Files\drv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\commons\commons.h">
+      <Filter>Source Files\commons</Filter>
+    </ClInclude>
+    <ClInclude Include="src\commons\SharedCommons.h">
+      <Filter>Source Files\commons</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\KUtils.h">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\process_monitor\ProcessMonitor.h">
+      <Filter>Source Files\process_monitor</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

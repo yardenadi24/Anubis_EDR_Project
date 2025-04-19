@@ -24,11 +24,13 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\managers\configuration_manager\ConfigurationManager.cpp" />
     <ClCompile Include="src\managers\service_manager\ServiceManager.cpp" />
+    <ClCompile Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.cpp" />
     <ClCompile Include="src\modules\security_modules\yara_analysis\YaraModule.cpp" />
     <ClCompile Include="src\services\anti_malware\AntiMalwareService.cpp" />
     <ClCompile Include="src\services\event_persistence\EventPersistenceService.cpp" />
     <ClCompile Include="src\services\process_monitor\ProcessMonitorService.cpp" />
     <ClCompile Include="src\services\security_event\SecurityEventService.cpp" />
+    <ClCompile Include="src\services\verdict_db\VerdictDbService.cpp" />
     <ClCompile Include="src\utils\filesystem\FilesystemUtils.cpp" />
     <ClCompile Include="src\utils\strings\StringUtil.cpp" />
     <ClCompile Include="src\utils\ui\AlertWindow.cpp" />
@@ -41,15 +43,20 @@
     <ClInclude Include="src\managers\configuration_manager\ConfigurationManager.h" />
     <ClInclude Include="src\managers\service_manager\ServiceManager.h" />
     <ClInclude Include="src\modules\security_modules\ISecurityModule.h" />
+    <ClInclude Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.h" />
     <ClInclude Include="src\modules\security_modules\yara_analysis\YaraModule.h" />
     <ClInclude Include="src\services\anti_malware\AntiMalwareService.h" />
     <ClInclude Include="src\services\event_persistence\EventPersistenceService.h" />
     <ClInclude Include="src\services\IService.h" />
     <ClInclude Include="src\services\process_monitor\ProcessMonitorService.h" />
     <ClInclude Include="src\services\security_event\SecurityEventService.h" />
+    <ClInclude Include="src\services\verdict_db\VerdictDbService.h" />
     <ClInclude Include="src\utils\filesystem\FilesystemUtils.h" />
     <ClInclude Include="src\utils\strings\StringUtil.h" />
     <ClInclude Include="src\utils\ui\AlertWindow.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="anubis_config.ini" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -145,7 +152,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>C:\Users\Yarden\Desktop\EDR_POCs\vcpkg\installed\x64-windows-static\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);libyara.lib;libcrypto.lib;ws2_32.lib;crypt32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);libyara.lib;libcrypto.lib;ws2_32.lib;bcrypt.lib;crypt32.lib;advapi32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

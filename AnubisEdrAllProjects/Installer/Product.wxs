@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:difx="http://schemas.microsoft.com/wix/DifxAppExtension">
+
+	<!-- 
+    Product element defines the overall MSI package
+    - Id="*" generates a new GUID automatically for each build
+    - Name is what appears in Add/Remove Programs
+    - Language="1033" is the locale code (1033 = English-US)
+    - Version defines the product version
+    - Manufacturer appears in Add/Remove Programs
+    - UpgradeCode remains the same across versions for upgrade support
+	 -->
+	
+	<Product Id="*"
+		 Name="Anubis EDR"
+		 Language="1033"
+		 Version="1.0.0.0"
+		 Manufacturer="Yarden's EDR Project"
+		 UpgradeCode="2252BA21-007E-4825-8F6B-DB6C8086D8D6">
+
+
+		<!-- 
+		  Package element defines MSI package properties
+		  - InstallerVersion="200" requires Windows Installer 2.0 or higher
+		  - Compressed="yes" embeds all files inside the MSI
+		  - InstallScope="perMachine" installs for all users
+		  - InstallPrivileges="elevated" requires admin rights
+		  - Description appears in Windows Installer logs
+		-->
+		<Package InstallerVersion="200"
+			 Compressed="yes"
+			 InstallScope="perMachine"
+			 InstallPrivileges="elevated"
+			 Description="Anubis Endpoint Detection and Response Solution by Yarden"/>
+
+		<!-- 
+		  MajorUpgrade handles upgrade scenarios
+		  - Prevents downgrades
+		  - Automatically removes previous versions
+		-->
+		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+		<!-- Embeds cabinet files inside the MSI for single-file distribution -->
+		<MediaTemplate EmbedCab="yes" />
+
+		<!-- 
+		  Feature defines a selectable feature in the installer
+		  - References component groups to include in this feature
+		  - Level="1" means it's installed by default
+		-->
+		<Feature Id="ProductFeature" Title="Anubis EDR" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+			<!-- Agent files -->
+			<ComponentGroupRef Id="DriverComponents" />
+			<!-- Driver files -->
+			<ComponentGroupRef Id="ApplicationShortcuts" />
+			<!-- Start menu shortcuts -->
+		</Feature>
+
+
+		<!-- 
+		  UI Configuration 
+		  - WixUI_InstallDir provides a standard Windows Installer UI
+		  - WIXUI_INSTALLDIR property sets which directory user can change
+		  - WixUILicenseRtf specifies the license file to display
+		-->
+		<UIRef Id="WixUI_InstallDir" />
+		<Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+		<WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+	</Product>
+
+	<!-- 
+	Fragment separates code into modular sections
+	This Fragment defines the directory structure
+	-->
+
+	<Fragment>
+		<!-- 
+		  Directory structure for the installation
+		  - TARGETDIR is a Windows Installer convention (root of installation)
+		  - Creates folders for program files, start menu, and data
+		-->
+		<Directory Id="TARGETDIR" Name="SourceDir">
+			<!-- Program Files folder -->
+			<Directory Id="ProgramFilesFolder">
+				<!-- Main installation folder -->
+				<Directory Id="INSTALLFOLDER" Name="Anubis EDR">
+					<!-- Subfolder for driver files -->
+					<Directory Id="DriverDir" Name="Drivers" />
+					<!-- Subfolder for configuration files -->
+					<Directory Id="ConfigDir" Name="Config" />
+				</Directory>
+			</Directory>
+
+			<!-- Start Menu folder -->
+			<Directory Id="ProgramMenuFolder">
+				<Directory Id="ApplicationProgramsFolder" Name="Anubis EDR"/>
+			</Directory>
+
+			<!-- Common AppData folder (C:\ProgramData) -->
+			<Directory Id="CommonAppDataFolder">
+				<Directory Id="AnubisDataFolder" Name="Anubis">
+					<!-- Folders for logs and rules -->
+					<Directory Id="LogsFolder" Name="Logs" />
+					<Directory Id="RulesFolder" Name="Rules" />
+				</Directory>
+			</Directory>
+		</Directory>
+	</Fragment>
+
+
+	<!-- 
+    Fragment containing component definitions
+    Components are the basic building blocks of MSI
+	-->
+	<Fragment>
+		<!-- 
+		ComponentGroup organizes related components
+		This group contains the agent executable and related files
+		-->
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+			<!-- 
+			Component for the main agent executable
+			- Contains service installation information
+			- Guid="*" auto-generates a component GUID
+			-->
+			<Component Id="AgentExecutable" Guid="*">
+			<!-- 
+			File element defines a file to install
+			- Source contains a path to the file
+			- KeyPath="yes" means this file identifies the component
+			- $(var.AnubisAgent.TargetPath) references the output from your agent project
+			-->
+				<File Id="AgentEXE" Source="$(var.AnubisAgent.TargetPath)" KeyPath="yes" />
+
+				<!-- 
+				ServiceInstall installs a Windows service
+				- Type="ownProcess" means it runs in its own process
+				- Start="auto" starts the service automatically on boot
+				- Account="LocalSystem" runs with SYSTEM privileges
+				-->
+				<ServiceInstall Id="ServiceInstaller"
+							   Type="ownProcess"
+							   Name="AnubisAgent"
+							   DisplayName="Anubis EDR Agent"
+							   Description="Provides endpoint detection and response capabilities"
+							   Start="auto"
+							   Account="LocalSystem"
+							   ErrorControl="normal" />
+
+				<!-- 
+				  ServiceControl manages the service during install/uninstall
+				  - Start="install" starts the service during installation
+				  - Stop="both" stops it during both install and uninstall
+				  - Remove="uninstall" removes the service during uninstall
+				  - Wait="yes" waits for the service to complete these actions
+				-->
+				<ServiceControl Id="StartService"
+							   Start="install"
+							   Stop="both"
+							   Remove="uninstall"
+							   Name="AnubisAgent"
+							   Wait="yes" />
+			</Component>
+
+			<!-- 
+			Component for configuration files
+			- Separate component to allow updating config without affecting service
+			-->
+			<Component Id="ConfigFile" Guid="*">
+				<File Id="ConfigINF" Source="$(var.ProjectDir)..\Config\anubis_config.inf" KeyPath="yes" />
+			</Component>		
+		</ComponentGroup>
+
+		<!-- 
+		  ComponentGroup for driver files
+		  - Directory="DriverDir" specifies where these components are installed
+		-->
+		<ComponentGroup Id="DriverComponents" Directory="DriverDir">
+			<!-- 
+			Component for the driver file
+			- Uses the DifxApp extension for driver installation
+			-->
+			<Component Id="DriverComponent" Guid="*">
+			<!-- 
+			File element for the driver .sys file
+			- Source references the compiled driver from your driver project
+			-->
+				<File Id="DriverSYS" Source="$(var.AnubisEdrDriver.TargetPath)" KeyPath="yes" />
+
+				<!-- 
+				  difx:Driver uses Microsoft's Driver Install Frameworks
+				  - AddRemovePrograms="no" hides from Programs and Features entry
+				  - DeleteFiles="yes" removes files during uninstall
+				  - ForceInstall="yes" overwrites existing driver
+				  - PlugAndPlayPrompt="no" prevents device connection prompt
+				-->
+				<difx:Driver AddRemovePrograms="no" DeleteFiles="yes" ForceInstall="yes" PlugAndPlayPrompt="no" />
+			</Component>
+		</ComponentGroup>
+		<!-- 
+		  ComponentGroup for Start Menu shortcuts
+		  - Directory="ApplicationProgramsFolder" defines where shortcuts are created
+		-->
+		<ComponentGroup Id="ApplicationShortcuts" Directory="ApplicationProgramsFolder">
+			<Component Id="ApplicationShortcut" Guid="*">
+				<!-- 
+			  Shortcut creates a Windows shortcut
+			  - Target points to the installed executable
+			  - WorkingDirectory sets initial directory when launched
+				-->
+				<Shortcut Id="ApplicationStartMenuShortcut"
+						 Name="Anubis EDR"
+						 Description="Endpoint Detection and Response Solution"
+						 Target="[INSTALLFOLDER]AnubisAgent.exe"
+						 WorkingDirectory="INSTALLFOLDER"/>
+
+				<!-- 
+			  RemoveFolder removes the shortcut folder during uninstall
+			  - On="uninstall" specifies when to remove it
+				-->
+				<RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall"/>
+
+				<!-- 
+				RegistryValue is used as the KeyPath for the shortcut component
+				- KeyPath="yes" helps Windows Installer track this component
+				- This registry entry is used to determine if the shortcuts are installed
+				-->
+				<RegistryValue Root="HKCU" Key="Software\AnubisEDR" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+			</Component>
+		</ComponentGroup>
+	</Fragment>
+	
+</Wix>

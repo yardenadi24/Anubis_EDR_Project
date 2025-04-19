@@ -15,7 +15,10 @@
 #include "managers/service_manager/ServiceManager.h"
 
 #include "modules/security_modules/yara_analysis/YaraModule.h"
+#include "modules/security_modules/yara_analysis/YaraModule.h"
+#include "modules/security_modules/verdict_db_analysis/VerdictDbModule.h"
 
+#include <thread> // For std::this_thread
 
 AnubisAgent* g_agent = nullptr;
 
@@ -85,14 +88,23 @@ int main(int argc, char* argv[])
     auto processMonitorService = std::make_shared<ProcessMonitorService>();
     serviceManager->RegisterService(processMonitorService);
 
+    // Create and register VerdictDbService
+    auto verdictDbService = std::make_shared<VerdictDbService>();
+    serviceManager->RegisterService(verdictDbService);
+
+
     auto yaraModule = std::make_shared<YaraModule>();
-    
+
+    auto verdictDbModule = std::make_shared<VerdictDbModule>();
+    verdictDbModule->SetVerdictDbService(verdictDbService);
+
     // Create and register AntiMalwareService
     auto antiMalwareService = std::make_shared<AntiMalwareService>(serviceManager);
     serviceManager->RegisterService(antiMalwareService);
 
-    // Create and register security modules
+    // Register security modules
     antiMalwareService->RegisterModule(yaraModule);
+    antiMalwareService->RegisterModule(verdictDbModule);
 
     // Additional modules will be registered here
     // antiMalwareService->RegisterModule(std::make_shared<BehaviorModule>());

@@ -11,7 +11,7 @@ struct AnalysisResult {
     std::string moduleName;     // Name of the module that made the decision
     std::string reason;         // Reason for the verdict
     std::vector<std::string> detections;  // List of specific detections if any
-
+    BOOL shouldContinue;
     AnalysisResult() : shouldBlock(FALSE) {}
 };
 

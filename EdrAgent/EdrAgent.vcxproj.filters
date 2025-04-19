@@ -49,9 +49,6 @@
     <Filter Include="Source Files\modules\security_modules">
       <UniqueIdentifier>{99b3065e-10c0-4486-bd9f-6748c522f68b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\modules\security_modules\yara_module">
-      <UniqueIdentifier>{1f584874-2e89-4207-960b-31a4d8d24f2e}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\services\anit_malware">
       <UniqueIdentifier>{3f5ef741-d921-4cd8-9dc5-fe7c1ade6216}</UniqueIdentifier>
     </Filter>
@@ -73,6 +70,15 @@
     <Filter Include="Source Files\utils\ui">
       <UniqueIdentifier>{3e12ee9d-ac88-4ced-8ee0-eba25734820e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\services\verdict_db">
+      <UniqueIdentifier>{5547aabc-f2b0-46a6-8323-2d97d407d0aa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\modules\security_modules\verdict_db_analysis">
+      <UniqueIdentifier>{1d0bdaf2-2bc0-4a12-bf41-c04f6b14ae92}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\modules\security_modules\yara_analysis">
+      <UniqueIdentifier>{1f584874-2e89-4207-960b-31a4d8d24f2e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent\Agent.cpp">
@@ -88,7 +94,7 @@
       <Filter>Source Files\managers\service_manager</Filter>
     </ClCompile>
     <ClCompile Include="src\modules\security_modules\yara_analysis\YaraModule.cpp">
-      <Filter>Source Files\modules\security_modules\yara_module</Filter>
+      <Filter>Source Files\modules\security_modules\yara_analysis</Filter>
     </ClCompile>
     <ClCompile Include="src\services\security_event\SecurityEventService.cpp">
       <Filter>Source Files\services\security_event</Filter>
@@ -114,6 +120,12 @@
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\services\verdict_db\VerdictDbService.cpp">
+      <Filter>Source Files\services\verdict_db</Filter>
+    </ClCompile>
+    <ClCompile Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.cpp">
+      <Filter>Source Files\modules\security_modules\verdict_db_analysis</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\agent\Agent.h">
@@ -138,7 +150,7 @@
       <Filter>Source Files\modules\security_modules</Filter>
     </ClInclude>
     <ClInclude Include="src\modules\security_modules\yara_analysis\YaraModule.h">
-      <Filter>Source Files\modules\security_modules\yara_module</Filter>
+      <Filter>Source Files\modules\security_modules\yara_analysis</Filter>
     </ClInclude>
     <ClInclude Include="src\services\IService.h">
       <Filter>Source Files\services</Filter>
@@ -164,5 +176,14 @@
     <ClInclude Include="src\utils\filesystem\FilesystemUtils.h">
       <Filter>Source Files\utils\filesystem</Filter>
     </ClInclude>
+    <ClInclude Include="src\services\verdict_db\VerdictDbService.h">
+      <Filter>Source Files\services\verdict_db</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.h">
+      <Filter>Source Files\modules\security_modules\verdict_db_analysis</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="anubis_config.ini" />
   </ItemGroup>
 </Project>

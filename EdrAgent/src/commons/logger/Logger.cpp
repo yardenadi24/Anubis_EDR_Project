@@ -92,7 +92,7 @@ void Logger::SetLogLevel(LogLevel level) {
 void Logger::Log(LogLevel level, const std::string& service, const std::string& message)
 {
     // Only log if the level is sufficient
-    if (level < m_LogLevel) {
+    if (level > m_LogLevel) {
         return;
     }
 
@@ -154,6 +154,9 @@ void Logger::Error(const std::string& service, const std::string& message) {
 
 void Logger::Critical(const std::string& service, const std::string& message) {
     Log(LogLevel::LOG_CRITICAL, service, message);
+}
+void Logger::Notice(const std::string& service, const std::string& message) {
+    Log(LogLevel::LOG_NOTICE, service, message);
 }
 
 // Helper method to convert LogLevel to string

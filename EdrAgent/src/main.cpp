@@ -18,7 +18,7 @@
 #include "modules/security_modules/yara_analysis/YaraModule.h"
 #include "modules/security_modules/verdict_db_analysis/VerdictDbModule.h"
 
-#include <thread> // For std::this_thread
+#include <thread> 
 
 AnubisAgent* g_agent = nullptr;
 
@@ -105,10 +105,6 @@ int main(int argc, char* argv[])
     // Register security modules
     antiMalwareService->RegisterModule(yaraModule);
     antiMalwareService->RegisterModule(verdictDbModule);
-
-    // Additional modules will be registered here
-    // antiMalwareService->RegisterModule(std::make_shared<BehaviorModule>());
-    // antiMalwareService->RegisterModule(std::make_shared<HashLookupModule>());
 
     // Start the agent
     if (!g_agent->Start()) {

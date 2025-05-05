@@ -12,6 +12,11 @@ ConfigurationManager::ConfigurationManager()
 ConfigurationManager::~ConfigurationManager()
 {}
 
+/*
+ * Load the configuration from the specified path.
+ * @param configPath Path to the configuration file.
+ * @return true if loading was successful, false otherwise.
+*/
 bool ConfigurationManager::LoadConfiguration(const std::string& configPath)
 {
     std::lock_guard<std::mutex> lock(m_configMutex);
@@ -21,6 +26,7 @@ bool ConfigurationManager::LoadConfiguration(const std::string& configPath)
         m_configPath = configPath;
     }
 
+	// Check if the configuration path is set
     if (m_configPath.empty()) {
         m_logger.Error("ConfigManager", "No configuration path specified");
         return false;
@@ -49,6 +55,11 @@ bool ConfigurationManager::LoadConfiguration(const std::string& configPath)
     return success;
 }
 
+/*
+ * Read the INI file and populate the configurations map.
+ * @param filePath Path to the INI file.
+ * @return true if reading was successful, false otherwise.
+*/
 bool ConfigurationManager::ReadIniFile(const std::string& filePath)
 {
     // First, open and read the file to check basic access
@@ -214,6 +225,12 @@ bool ConfigurationManager::SetGlobalConfig(const std::string& key, const std::st
     return true;
 }
 
+/*
+ * Parse a section of the INI file and populate the configurations map.
+ * @param sectionName Name of the section.
+ * @param sectionData Data of the section.
+ * @return true if parsing was successful, false otherwise.
+*/
 bool ConfigurationManager::ParseIniSection(const std::string& sectionName, const std::string& sectionData)
 {
     // Initialize the section in our configurations map if it doesn't exist

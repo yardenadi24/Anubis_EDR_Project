@@ -12,11 +12,12 @@
 class Logger {
 public:
     enum class LogLevel {
-        LOG_DEBUG,
-        LOG_INFO,
-        LOG_WARNING,
+        LOG_CRITICAL,
         LOG_ERROR,
-        LOG_CRITICAL
+        LOG_INFO,
+        LOG_DEBUG,
+        LOG_WARNING,
+        LOG_NOTICE
     };
 
 
@@ -56,4 +57,5 @@ public:
     void Warning(const std::string& service, const std::string& message);
     void Error(const std::string& service, const std::string& message);
     void Critical(const std::string& service, const std::string& message);
+    void Notice(const std::string& service, const std::string& message);
 };

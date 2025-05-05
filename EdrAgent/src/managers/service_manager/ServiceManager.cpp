@@ -76,6 +76,7 @@ std::shared_ptr<IService> ServiceManager::GetService(const std::string& serviceN
 }
 
 bool ServiceManager::StartAllServices() {
+
     std::lock_guard<std::mutex> lock(m_servicesMutex);
     bool allSuccess = true;
 

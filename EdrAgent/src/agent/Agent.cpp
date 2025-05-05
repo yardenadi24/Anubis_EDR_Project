@@ -17,6 +17,12 @@ AnubisAgent::~AnubisAgent() {
     Stop();
 }
 
+/*
+ * Initialize the Anubis EDR Agent.
+ * This function loads the configuration and initializes the logger.
+ * @param configPath Path to the configuration file.
+ * @return true if initialization was successful, false otherwise.
+ */
 bool AnubisAgent::Initialize(const std::string& configPath)
 {
     // First, load the configuration
@@ -50,6 +56,9 @@ bool AnubisAgent::Initialize(const std::string& configPath)
     else if (logLevelStr == "CRITICAL") {
         logLevel = Logger::LogLevel::LOG_CRITICAL;
     }
+    else if (logLevelStr == "NOTICE") {
+        logLevel = Logger::LogLevel::LOG_NOTICE;
+    }
 
     // Initialize the logger with the configured settings
     // We need to place this in a separate block to avoid deadlock with m_LogMutex
@@ -71,6 +80,7 @@ bool AnubisAgent::Initialize(const std::string& configPath)
 bool AnubisAgent::Start()
 {
 	std::lock_guard<std::mutex> lock(m_agentMutex);
+
 	if (m_isRunning) {
 		m_Logger.Warning("Agent", "Agent is already running");
 		return false;

@@ -112,6 +112,8 @@
     <ClCompile Include="src\drv\drv.cpp" />
     <ClCompile Include="src\filesystem_monitor\FileMonitorFilter.cpp" />
     <ClCompile Include="src\process_monitor\ProcessMonitor.cpp" />
+    <ClCompile Include="src\utils\kDiskUtils.cpp" />
+    <ClCompile Include="src\utils\kOsUtils.cpp" />
     <ClCompile Include="src\utils\KUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -120,6 +122,9 @@
     <ClInclude Include="src\drv\drv.h" />
     <ClInclude Include="src\filesystem_monitor\FileMonitorFilter.h" />
     <ClInclude Include="src\process_monitor\ProcessMonitor.h" />
+    <ClInclude Include="src\utils\kDiskUtils.h" />
+    <ClInclude Include="src\utils\kOsUtils.h" />
+    <ClInclude Include="src\utils\kStringUtils.h" />
     <ClInclude Include="src\utils\KUtils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

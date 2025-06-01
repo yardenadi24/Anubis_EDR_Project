@@ -46,6 +46,12 @@
     <ClCompile Include="src\filesystem_monitor\FileMonitorFilter.cpp">
       <Filter>Source Files\filesystem_monitor</Filter>
     </ClCompile>
+    <ClCompile Include="src\utils\kOsUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\kDiskUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\drv\drv.h">
@@ -65,6 +71,15 @@
     </ClInclude>
     <ClInclude Include="src\filesystem_monitor\FileMonitorFilter.h">
       <Filter>Source Files\filesystem_monitor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\kStringUtils.h">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\kOsUtils.h">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\kDiskUtils.h">
+      <Filter>Source Files\utils</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

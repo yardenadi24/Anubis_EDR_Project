@@ -3,942 +3,1279 @@
 #include <dontuse.h>
 #include <suppress.h>
 #include <ntstrsafe.h>
+#include <Ntddstor.h>
+#include "..\utils\kStringUtils.h"
+#include "..\utils\kOsUtils.h"
+#include "..\utils\kDiskUtils.h"
 
-#pragma warning(disable: 4996) 
-#pragma warning(disable: 4100) 
-#pragma comment(lib, "FltMgr.lib")
 
-FILTER_DATA g_FilterData = { 0 };
+PFLT_FILTER g_pFilter = NULL;
+BOOLEAN g_Monitor = FALSE;
+BOOLEAN g_PortInitialized = FALSE;
+PFLT_PORT g_pServerPort; // Filter server port 
+PFLT_PORT g_pClientPort; // Filter client port 
 
-// Define constant FLT_REGISTRATION for this filter
-const FLT_OPERATION_REGISTRATION Callbacks[] = {
-    { IRP_MJ_CREATE,
-      0,
-      PreCreate,
-      PostCreate },
+//////////////////////////
+// Operation callbacks
+/////////////////////////
 
-    { IRP_MJ_WRITE,
-      0,
-      PreWrite,
-      PostWrite },
+CONST
+FLT_OPERATION_REGISTRATION
+c_Callbacks[] =
+{
+	{ IRP_MJ_CREATE, 0, PreCreate, PostCreate },
+	{ IRP_MJ_CLEANUP, 0, PreCleanup, PostCleanup },
+	{ IRP_MJ_SET_INFORMATION, FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO, PreSetFileInfo, PostSetFileInfo },
+	{ IRP_MJ_WRITE, 0, PreWrite, PostWrite },
+	{ IRP_MJ_READ, 0, PreRead, PostRead },
 
-    { IRP_MJ_READ,
-      0,
-      PreRead,
-      PostRead },
-
-    { IRP_MJ_SET_INFORMATION,
-      0,
-      PreSetInformation,
-      PostSetInformation },
-
-    { IRP_MJ_CLEANUP,
-      0,
-      PreCleanup,
-      PostCleanup },
-
-    { IRP_MJ_OPERATION_END }
+	{ IRP_MJ_OPERATION_END }
 };
 
-const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
-    { FLT_FILE_CONTEXT,
-      0,
-      NULL,
-      sizeof(FILE_CONTEXT),
-      'XCTF' },
+//////////////////////////
+// Contexts
+//////////////////////////
 
-    { FLT_CONTEXT_END }
+CONST
+FLT_CONTEXT_REGISTRATION
+c_ContextRegistration[] =
+{
+	{FLT_INSTANCE_CONTEXT, 0, CleanUpInstanceContext, sizeof(INSTANCE_CONTEXT), EDR_MEMORY_TAG},
+	{FLT_STREAMHANDLE_CONTEXT, 0, STREAM_HANDLE_CONTEXT::CleanUp, sizeof(STREAM_HANDLE_CONTEXT), EDR_MEMORY_TAG}
 };
 
-const FLT_REGISTRATION FilterRegistration = {
-    sizeof(FLT_REGISTRATION),           // Size
-    FLT_REGISTRATION_VERSION,           // Version
-    0,                                  // Flags
-    ContextRegistration,                // Context registration
-    Callbacks,                          // Operation callbacks
-    FileMonitorFilterUnload,            // FilterUnload
-    FileMonitorInstanceSetup,           // InstanceSetup
-    FileMonitorInstanceQueryTeardown,   // InstanceQueryTeardown
-    FileMonitorInstanceTeardownStart,   // InstanceTeardownStart
-    FileMonitorInstanceTeardownComplete // InstanceTeardownComplete
+//////////////////////////
+// Registration struct
+//////////////////////////
+
+CONST
+FLT_REGISTRATION
+c_FilterRegistration
+{
+	sizeof(FLT_REGISTRATION) /*Size*/,
+	FLT_REGISTRATION_VERSION /*Version*/,
+	0 /*Flags*/,
+	c_ContextRegistration /*Contexts*/,
+	c_Callbacks /*Callbacks*/,
+	UnloadFilter /*Unload func*/,
+	SetupInstance /*Instance setup routine*/,
+	QueryInstanceTeardown,
+	StartInstanceTeardown,
+	CompleteInstanceTeardown,
+
+	NULL /*Generate file name*/,
+	NULL /*Generate destination file name*/,
+	NULL /*Normalize name component*/
 };
 
 NTSTATUS
-DriverEntry(
-    _In_ PDRIVER_OBJECT DriverObject,
-    _In_ PUNICODE_STRING RegistryPath
-)
+Initialize(PDRIVER_OBJECT pDriverObj)
 {
-    UNREFERENCED_PARAMETER(RegistryPath);
-    NTSTATUS status;
-    UNICODE_STRING portName;
-    PSECURITY_DESCRIPTOR securityDescriptor = NULL;
-    OBJECT_ATTRIBUTES objectAttributes;
+	BOOLEAN fSuccess = FALSE;
 
-    DbgInfo("Anubis file monitor driver starting");
+	__try {
 
-    // Register the minifilter
-    status = FltRegisterFilter(
-        DriverObject,
-        &FilterRegistration,
-        &g_FilterData.Filter
-    );
+		NTSTATUS Status = FltRegisterFilter(pDriverObj, &c_FilterRegistration, &g_pFilter);
+		if (!NT_SUCCESS(Status))
+		{
+			return Status;
+		}
 
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to register filter: 0x%X", status);
-        return status;
-    }
+		Status = FltStartFiltering(g_pFilter);
+		if (!NT_SUCCESS(Status))
+		{
+			return Status;
+		}
 
-    // Set up a communication port for user-mode interaction
-    RtlInitUnicodeString(&portName, ANUBIS_PORT_NAME);
 
-    // Create security descriptor for the port
-    status = FltBuildDefaultSecurityDescriptor(
-        &securityDescriptor,
-        FLT_PORT_ALL_ACCESS
-    );
+		fSuccess = TRUE;
+	}
+	__finally {
 
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to build security descriptor: 0x%X", status);
-        FltUnregisterFilter(g_FilterData.Filter);
-        return status;
-    }
+		if (!fSuccess)
+		{
+			Finalize();
+			return STATUS_UNSUCCESSFUL;
+		}
 
-    // Initialize object attributes for the port
-    InitializeObjectAttributes(
-        &objectAttributes,
-        &portName,
-        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
-        NULL,
-        securityDescriptor
-    );
-
-    // Create the communication port
-    status = FltCreateCommunicationPort(
-        g_FilterData.Filter,
-        &g_FilterData.ServerPort,
-        &objectAttributes,
-        NULL,                   // ServerPortCookie
-        FileMonitorConnect,     // ConnectNotifyCallback
-        FileMonitorDisconnect,  // DisconnectNotifyCallback
-        FileMonitorMessage,     // MessageNotifyCallback
-        1                       // MaxConnections
-    );
-
-    // Free the security descriptor since it's no longer needed
-    FltFreeSecurityDescriptor(securityDescriptor);
-
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to create communication port: 0x%X", status);
-        FltUnregisterFilter(g_FilterData.Filter);
-        return status;
-    }
-
-    // Start filtering I/O
-    status = FltStartFiltering(g_FilterData.Filter);
-
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to start filtering: 0x%X", status);
-        FltCloseCommunicationPort(g_FilterData.ServerPort);
-        FltUnregisterFilter(g_FilterData.Filter);
-        return status;
-    }
-
-    g_FilterData.Monitoring = TRUE;
-    DbgInfo("Anubis file monitor driver successfully started");
-
-    return STATUS_SUCCESS;
+	}
+	return STATUS_SUCCESS;
 }
 
-NTSTATUS
-FileMonitorFilterUnload(
-    _In_ FLT_FILTER_UNLOAD_FLAGS Flags
-)
-{
-    UNREFERENCED_PARAMETER(Flags);
-    DbgInfo("Anubis file monitor driver unloading");
-
-    // Close the communication port if it exists
-    if (g_FilterData.ServerPort) {
-        FltCloseCommunicationPort(g_FilterData.ServerPort);
-    }
-
-    // Unregister the filter
-    if (g_FilterData.Filter) {
-        FltUnregisterFilter(g_FilterData.Filter);
-    }
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
-FileMonitorInstanceSetup(
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_ FLT_INSTANCE_SETUP_FLAGS Flags,
-    _In_ DEVICE_TYPE VolumeDeviceType,
-    _In_ FLT_FILESYSTEM_TYPE VolumeFilesystemType
-)
-{
-    UNREFERENCED_PARAMETER(Flags);
-    UNREFERENCED_PARAMETER(FltObjects);
-
-    // Only filter supported file systems
-    if (VolumeDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM) {
-        DbgInfo("Ignoring network file system");
-        return STATUS_FLT_DO_NOT_ATTACH;
-    }
-
-    // Only monitor standard file systems 
-    if (VolumeFilesystemType != FLT_FSTYPE_NTFS &&
-        VolumeFilesystemType != FLT_FSTYPE_FAT &&
-        VolumeFilesystemType != FLT_FSTYPE_EXFAT) {
-        DbgInfo("Ignoring unsupported file system type: %d", VolumeFilesystemType);
-        return STATUS_FLT_DO_NOT_ATTACH;
-    }
-
-    DbgInfo("Attached to volume (FsType: %d)", VolumeFilesystemType);
-    return STATUS_SUCCESS;
-}
 
 VOID
-FileMonitorInstanceTeardownStart(
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Flags
-)
+Finalize()
 {
-    UNREFERENCED_PARAMETER(FltObjects);
-    UNREFERENCED_PARAMETER(Flags);
-    DbgInfo("Instance teardown starting");
+	if (g_pFilter == NULL)
+		return;
+
+	FltUnregisterFilter(g_pFilter);
+	g_pFilter = NULL;
 }
 
-VOID
-FileMonitorInstanceTeardownComplete(
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_ FLT_INSTANCE_TEARDOWN_FLAGS Flags
-)
+// This routine is called whenever
+// a new instance is created on a volume. This
+// gives us a chance to decide
+// if we need to attach to this volume or not.
+NTSTATUS SetupInstance(_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+	_In_ FLT_INSTANCE_SETUP_FLAGS /*eFlags*/,
+	_In_ DEVICE_TYPE eVolumeDeviceType,
+	_In_ FLT_FILESYSTEM_TYPE eVolumeFilesystemType)
 {
-    UNREFERENCED_PARAMETER(FltObjects);
-    UNREFERENCED_PARAMETER(Flags);
-    DbgInfo("Instance teardown complete");
+	PINSTANCE_CONTEXT pInstCtx = NULL;
+	PFLT_VOLUME_PROPERTIES pVolumeProperties = NULL;
+
+	__try
+	{
+		// Allocate memory for the instance context
+		PFLT_CONTEXT pFltCtx = NULL;
+		FltAllocateContext(
+			pFltObjects->Filter,
+			FLT_INSTANCE_CONTEXT,
+			sizeof(_INSTANCE_CONTEXT),
+			NonPagedPool,
+			&pFltCtx);
+
+		pInstCtx = (PINSTANCE_CONTEXT)pFltCtx;
+
+		if (pInstCtx == NULL)
+		{
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+		pInstCtx->Init();
+
+		do
+		{
+			// Get Volume properties
+			ULONG nBufferSize = 0;
+			NTSTATUS status = FltGetVolumeProperties(
+				pFltObjects->Volume,
+				NULL, // NULL to get the size first
+				0,
+				&nBufferSize);
+
+			if (!NT_SUCCESS(status) && status != STATUS_BUFFER_TOO_SMALL)
+			{
+				// TODO::LOG
+				break; // Failed to get volume properties
+			}
+
+			// Allocate demanded size
+			pVolumeProperties = (PFLT_VOLUME_PROPERTIES)ExAllocatePoolWithTag(
+				NonPagedPool,
+				nBufferSize,
+				EDR_MEMORY_TAG
+			);
+			if (pVolumeProperties == NULL)
+				return STATUS_INSUFFICIENT_RESOURCES;
+
+
+			status = FltGetVolumeProperties(
+				pFltObjects->Volume,
+				pVolumeProperties,
+				nBufferSize,
+				&nBufferSize);
+
+			if (!NT_SUCCESS(status))
+			{
+				ExFreePoolWithTag(pVolumeProperties, EDR_MEMORY_TAG);
+				pVolumeProperties = NULL;
+				break; // Failed to get volume properties
+			}
+
+		} while (false);
+		
+		// Get device name if possiable
+		PUNICODE_STRING pDeviceName = pVolumeProperties == NULL ? &cUnkownUnicodeString : &pVolumeProperties->RealDeviceName;
+
+		
+		ANSI_STRING AnsiDeviceName;
+		AnsiDeviceName.Buffer = pInstCtx->sDeviceName;
+		AnsiDeviceName.Length = 0;
+		AnsiDeviceName.MaximumLength = sizeof(pInstCtx->sDeviceName) - 1;
+
+		NTSTATUS status = RtlUnicodeStringToAnsiString(
+			&AnsiDeviceName,
+			pDeviceName,
+			FALSE);
+
+		if (!NT_SUCCESS(status))
+		{
+			AnsiDeviceName.Length = 0;
+		}
+
+		pInstCtx->sDeviceName[AnsiDeviceName.Length] = 0; // Null-terminate the string
+
+		// Copy Device name to the instance context
+		if (pVolumeProperties != NULL)
+		{
+			CloneUnicodeString(
+				&pVolumeProperties->RealDeviceName,
+				&pInstCtx->usDeviceName,
+				(PVOID*)&pInstCtx->pDeviceNameBuffer);
+		}
+
+		// Get the sector size
+		if (pVolumeProperties != NULL)
+		{
+			pInstCtx->SectorSize = (pVolumeProperties->SectorSize < c_MinSectorSize) ? c_MinSectorSize : pVolumeProperties->SectorSize;
+		}
+
+		// Check if its a network FS attempt
+		if (eVolumeDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM)
+		{
+			pInstCtx->fIsNetworkFS = TRUE;
+
+			// The string L"\\Device\\Mup" 
+			// refers to the Multiple UNC Provider (MUP) device in Windows.
+			// MUP is a file system driver that allows access to network resources
+			// using UNC (Universal Naming Convention) paths (Example: \\server\share)
+			STATIC_UNICODE_STRING(usDeviceMup, L"\\device\\mup");
+			if (pVolumeProperties != NULL
+				&& RtlEqualUnicodeString(
+					&pVolumeProperties->RealDeviceName,
+					&usDeviceMup, TRUE))
+			{
+				pInstCtx->fIsMup = TRUE;
+			}
+		}
+
+		if (eVolumeDeviceType == FILE_DEVICE_DISK_FILE_SYSTEM)
+		{
+			// Collect USB info
+			status = CollectUsbInfo(pFltObjects, pInstCtx);
+		}
+
+		if (pVolumeProperties != NULL)
+		{
+			pInstCtx->fIsFixed = !BOOLEAN_FLAG_ON(
+				pVolumeProperties->DeviceCharacteristics,
+				FILE_REMOVABLE_MEDIA | FILE_FLOPPY_DISKETTE | FILE_REMOTE_DEVICE | FILE_PORTABLE_DEVICE);
+		}
+		else {
+			pInstCtx->fIsFixed = (BOOLEAN)(eVolumeDeviceType == FILE_DEVICE_DISK_FILE_SYSTEM && !pInstCtx->fIsUsb);
+		}
+
+
+		// Get volume GUID
+		ULONG nBufferSizeNeeded = 0;
+		if (!NT_SUCCESS(FltGetVolumeGuidName(pFltObjects->Volume, &pInstCtx->usVolumeGuid, &nBufferSizeNeeded)))
+		{
+			// Cant get volume guid , should log
+		}
+
+		if (pInstCtx->fIsNetworkFS)
+		{
+			pInstCtx->DriverType = VOLUME_DRIVER_TYPE::NETWORK;
+		}
+		else if (pVolumeProperties != NULL)
+		{
+			if (BOOLEAN_FLAG_ON(pVolumeProperties->DeviceCharacteristics, FILE_REMOVABLE_MEDIA))
+			{
+				pInstCtx->DriverType = VOLUME_DRIVER_TYPE::REMOVABLE;
+			}
+			else {
+				pInstCtx->DriverType = VOLUME_DRIVER_TYPE::FIXED;
+			}
+		}
+		else {
+			if (pInstCtx->fIsFixed)
+			{
+				pInstCtx->DriverType = VOLUME_DRIVER_TYPE::FIXED;
+			}
+			else {
+				pInstCtx->DriverType = VOLUME_DRIVER_TYPE::REMOVABLE;
+			}
+		}
+
+		ULONG nDeviceCharacteristics = pVolumeProperties != NULL ? pVolumeProperties->DeviceCharacteristics : 0;
+
+		// LOG the device info
+
+		pInstCtx->fSetupIsFinished = TRUE;
+
+	}
+	__finally
+	{
+		if (pInstCtx != NULL)
+		{
+			FltReleaseContext(pInstCtx);
+		}
+		if (pVolumeProperties != NULL)
+		{
+			ExFreePoolWithTag(pVolumeProperties, EDR_MEMORY_TAG);
+		}
+	}
+
+	return STATUS_SUCCESS;
 }
 
+
+
+// This is called when an instance is being manually
+// deleted by call to 'FltDetachVolume' of 'FilterDetach'
+// giving us a chance to fail the detach request
 NTSTATUS
-FileMonitorInstanceQueryTeardown(
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_ FLT_INSTANCE_QUERY_TEARDOWN_FLAGS Flags
-)
+QueryInstanceTeardown(
+	PCFLT_RELATED_OBJECTS /*pFltObjects*/,
+	FLT_INSTANCE_QUERY_TEARDOWN_FLAGS /*eFlags*/)
 {
-    UNREFERENCED_PARAMETER(FltObjects);
-    UNREFERENCED_PARAMETER(Flags);
-    DbgInfo("Instance query teardown");
-
-    // Allow teardown to proceed
-    return STATUS_SUCCESS;
+	return STATUS_SUCCESS;
 }
 
 
-// Pre and Post-operation Callbacks
+// This routine is called at the start of instance teardown.
+VOID StartInstanceTeardown(
+	PCFLT_RELATED_OBJECTS /*pFltObjects*/,
+	FLT_INSTANCE_TEARDOWN_FLAGS /*eFlags*/)
+{
+}
 
+// This routine is called at the end of instance teardown.
+VOID CompleteInstanceTeardown(
+	_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+	_In_ FLT_INSTANCE_TEARDOWN_FLAGS /*eFlags*/)
+{
+	PINSTANCE_CONTEXT pInstCtx = NULL;
+	__try
+	{
+		FltGetInstanceContext(
+			pFltObjects->Instance,
+			(PFLT_CONTEXT*)&pInstCtx);
+	}
+	__finally
+	{
+		if (pInstCtx != NULL)
+		{
+			FltReleaseContext(pInstCtx);
+		}
+	}
+}
+
+// Mainly check if need to monitor
+FLT_PREOP_CALLBACK_STATUS FLTAPI PreCreate(
+	_Inout_ PFLT_CALLBACK_DATA pData,
+	_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+	_Flt_CompletionContext_Outptr_ PVOID* /*pCompletionContext*/)
+{
+	// Skip conditions
+	if (KeGetCurrentIrql() > PASSIVE_LEVEL) // Above Passive level
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	if (IoGetTopLevelIrp()) // Is nested IRP 
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	if (FLT_IS_FASTIO_OPERATION(pData))
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	if (!FLT_IS_IRP_OPERATION(pData))
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	// Skip PIPE MAILSLOT
+	if (FlagOn(pFltObjects->FileObject->Flags, FO_NAMED_PIPE | FO_MAILSLOT | FO_VOLUME_OPEN))
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	// Skip Paging file
+	if (BOOLEAN_FLAG_ON(pData->Iopb->OperationFlags, SL_OPEN_PAGING_FILE))
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	// ECP (Extra Create Parameter),
+	// which is a mechanism in Windows for attaching extra metadata
+	// to file create/open operations.
+	// These are often used by system components
+	// We want to see if its Prefetcher or Windows defender.
+	PECP_LIST EcpList = NULL;
+	if (NT_SUCCESS(FltGetEcpListFromCallbackData(g_pFilter, pData, &EcpList)) && EcpList != NULL)
+	{
+		// Skip Prefetcher
+		// Skip Windows defender csvfs calls
+		// TODO
+	}
+
+	// Get process handle
+	//HANDLE nProcessId = (HANDLE)(ULONG_PTR)FltGetRequestorProcessId(pData);
+
+	// TODO:: Create and fill process context
+	// TODO:: Implement self defense
+
+	if (!g_Monitor)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	// TODO:: Is white listed?
+
+	// TODO:: Specific monitor enablement for specific operation
+
+	return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+}
+
+
+FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCreate(
+	__inout PFLT_CALLBACK_DATA pData,
+	__in PCFLT_RELATED_OBJECTS pFltObjects,
+	__in_opt PVOID /*pCompletionContext*/,
+	__in FLT_POST_OPERATION_FLAGS Flags)
+{
+	if (g_Monitor)
+		return FLT_POSTOP_FINISHED_PROCESSING;
+
+	if (BOOLEAN_FLAG_ON(Flags, FLTFL_POST_OPERATION_DRAINING) /*No need to monitor draining*/)
+		return FLT_POSTOP_FINISHED_PROCESSING;
+
+	if (!NT_SUCCESS(pData->IoStatus.Status) || pData->IoStatus.Status == STATUS_REPARSE /* Special handling for symLinks, volume mount points, junction points etc */)
+		return FLT_POSTOP_FINISHED_PROCESSING;
+
+	PINSTANCE_CONTEXT pInstCtx = NULL;
+	PFLT_FILE_NAME_INFORMATION pNameInfo = NULL;
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+
+	__try
+	{
+		// Skip	PIPE MAILSLOT VOLUME_OPEN, which is set by FS driver
+		if (FlagOn(pFltObjects->FileObject->Flags, FO_NAMED_PIPE | FO_MAILSLOT | FO_VOLUME_OPEN))
+			return FLT_POSTOP_FINISHED_PROCESSING;
+
+		ULONG_PTR nProcessId = (ULONG_PTR)FltGetRequestorProcessId(pData);
+
+		FILE_STANDARD_INFORMATION FileStdInfo = {};
+		UINT64 nSizeAtCreation = c_nUnknownFileSize;
+		BOOLEAN fIsDirectory = FALSE;
+		ULONG nRetLength = 0;
+
+		NTSTATUS Status = FltQueryInformationFile(
+			pFltObjects->Instance,
+			pFltObjects->FileObject,
+			&FileStdInfo,
+			sizeof(FILE_STANDARD_INFORMATION),
+			FileStandardInformation,
+			&nRetLength);
+
+		if (NT_SUCCESS(Status))
+		{
+			fIsDirectory = FileStdInfo.Directory;
+			nSizeAtCreation = FileStdInfo.EndOfFile.QuadPart;
+		}
+
+		// Skip directory
+		if (fIsDirectory)
+			return FLT_POSTOP_FINISHED_PROCESSING;
+
+		Status = FltGetInstanceContext(
+			pFltObjects->Instance,
+			(PFLT_CONTEXT*)&pInstCtx);
+
+		if (!NT_SUCCESS(Status))
+		{
+			return FLT_POSTOP_FINISHED_PROCESSING;
+		}
+
+		// Get Name Info
+		(void)FltGetFileNameInformation(pData, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &pNameInfo);
+		if (pNameInfo != NULL)
+		{
+			Status = FltParseFileNameInformation(pNameInfo);
+		}
+
+		if (pNameInfo == NULL)
+			return FLT_POSTOP_FINISHED_PROCESSING;
+
+		// Allocate and fill stream handle context
+		
+		FltReferenceFileNameInformation(pNameInfo);
+		
+		STREAM_HANDLE_CONTEXT::Initialize(&pStreamHandleCtx, pFltObjects);
+		
+		pStreamHandleCtx->pNameInfo = pNameInfo;
+		pStreamHandleCtx->nOpeningProcessId = nProcessId;
+		pStreamHandleCtx->fIsDirectory = fIsDirectory;
+		pStreamHandleCtx->nSizeAtCreation = nSizeAtCreation;
+
+		FltReferenceContext(pInstCtx); // Add reference due to the stream ctx use
+		pStreamHandleCtx->pInstCtx = pInstCtx;
+
+		// Creation parameters
+		ACCESS_MASK DesiredAccess = pData->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
+		ULONG CreationOptions = pData->Iopb->Parameters.Create.Options & 0xFFFFFF;
+
+		pStreamHandleCtx->fDeleteOnClose = BOOLEAN_FLAG_ON(CreationOptions, FILE_DELETE_ON_CLOSE);
+		pStreamHandleCtx->fIsExecute =
+			!FlagOn(CreationOptions, FILE_DIRECTORY_FILE) &&
+			FlagOn(DesiredAccess, FILE_EXECUTE) &&
+			!FlagOn(DesiredAccess, FILE_WRITE_DATA) &&
+			!FlagOn(DesiredAccess, FILE_READ_EA);
+
+		// Fill creation status
+		switch (pData->IoStatus.Information)
+		{
+			case FILE_SUPERSEDED:
+			case FILE_OVERWRITTEN:
+				pStreamHandleCtx->eCreationStatus = FILE_CREATION_STATUS::TRUNCATED;
+			case FILE_OPENED:
+				pStreamHandleCtx->eCreationStatus = FILE_CREATION_STATUS::OPENED;
+				break;
+			case FILE_CREATED:
+				pStreamHandleCtx->eCreationStatus = FILE_CREATION_STATUS::CREATED;
+				break;
+			default:
+				pStreamHandleCtx->eCreationStatus = FILE_CREATION_STATUS::OPENED;
+		}
+
+		if (!pStreamHandleCtx->fSkipItem)
+		{
+			// Detect Write sequence
+			if (pStreamHandleCtx->nSizeAtCreation == 0)
+			{
+				// Files size 0
+				pStreamHandleCtx->SequenceWriteInfo.fEnabled = TRUE;
+			}
+
+			pStreamHandleCtx->SequenceReadInfo.fEnabled = TRUE;
+
+			SendFileEventNoResponse(kEventType::FileCreate, pStreamHandleCtx);
+			// TODO:: LOG
+		}
+
+	}
+	__finally
+	{
+		if (pInstCtx != NULL)
+			FltReleaseContext(pInstCtx);
+		if (pStreamHandleCtx != NULL)
+			FltReleaseContext(pStreamHandleCtx);
+		if (pNameInfo != NULL)
+			FltReleaseFileNameInformation(pNameInfo);
+	}
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS FLTAPI PreCleanup(
+	_Inout_ PFLT_CALLBACK_DATA /*pData*/,
+	_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+	_Flt_CompletionContext_Outptr_ PVOID* /*pCompletionContext*/)
+{
+	if (!g_Monitor)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+	NTSTATUS Status = FltGetStreamHandleContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+	if (!NT_SUCCESS(Status) || pStreamHandleCtx == NULL)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	BOOLEAN fSkipItem = pStreamHandleCtx->fSkipItem;
+	FltReleaseContext(pStreamHandleCtx);
+
+	FLT_PREOP_CALLBACK_STATUS Ret;
+	if (fSkipItem)
+		Ret = FLT_PREOP_SUCCESS_NO_CALLBACK;
+	else
+		Ret = FLT_PREOP_SYNCHRONIZE;
+
+	return Ret;
+}
+
+FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCleanup(
+	__inout PFLT_CALLBACK_DATA pData,
+	__in PCFLT_RELATED_OBJECTS pFltObjects,
+	__in_opt PVOID /*pCompletionContext*/,
+	__in FLT_POST_OPERATION_FLAGS Flags)
+{
+	if (!g_Monitor ||
+		FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) ||
+		!NT_SUCCESS(pData->IoStatus.Status))
+	{
+		return FLT_POSTOP_FINISHED_PROCESSING;
+	}
+
+	NTSTATUS Status = STATUS_SUCCESS;
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+
+	__try
+	{
+		Status = FltGetStreamHandleContext(
+			pFltObjects->Instance,
+			pFltObjects->FileObject,
+			(PFLT_CONTEXT*)&pStreamHandleCtx);
+
+		if (pStreamHandleCtx == NULL)
+		{
+			return FLT_POSTOP_FINISHED_PROCESSING;
+		}
+
+		BOOLEAN fFileWasDeleted = FALSE;
+		if (pStreamHandleCtx->fDeleteOnClose ||
+			pStreamHandleCtx->fDispositionDelete)
+		{
+			fFileWasDeleted = TRUE;
+		}
+
+		if (pStreamHandleCtx->SequenceWriteInfo.fEnabled)
+		{
+			// TODO:: Improve logic
+			SendFileEventNoResponse(kEventType::FileDataWrite, pStreamHandleCtx);
+		}
+
+		if (pStreamHandleCtx->SequenceReadInfo.fEnabled)
+		{
+			// TODO:: Improve logic
+			SendFileEventNoResponse(kEventType::FileDataRead, pStreamHandleCtx);
+		}
+
+		if (pStreamHandleCtx->fDirty && !fFileWasDeleted)
+		{
+			SendFileEventNoResponse(kEventType::FileDataChange, pStreamHandleCtx);
+		}
+
+		if (pStreamHandleCtx->eCreationStatus != FILE_CREATION_STATUS::CREATED && fFileWasDeleted)
+		{
+			SendFileEventNoResponse(kEventType::FileDelete, pStreamHandleCtx);
+		}
+
+
+		SendFileEventNoResponse(kEventType::FileClose, pStreamHandleCtx);
+		// TODO:: LOG
+
+	}
+	__finally
+	{
+		if (pStreamHandleCtx != NULL)
+			FltReleaseContext(pStreamHandleCtx);
+	}
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+
+
+// Mainly monitor delete attempts
 FLT_PREOP_CALLBACK_STATUS
-PreCreate(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Flt_CompletionContext_Outptr_ PVOID* CompletionContext
-)
+FLTAPI
+PreSetFileInfo(
+	_Inout_ PFLT_CALLBACK_DATA pData,
+	_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+	_Flt_CompletionContext_Outptr_ PVOID* /*pCompletionContext*/)
 {
-    UNREFERENCED_PARAMETER(CompletionContext);
+	if (!g_Monitor)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
-    // Only handle if monitoring is enabled
-    if (!g_FilterData.Monitoring || !g_FilterData.ClientPort) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	// If not delete, skip
+	FILE_INFORMATION_CLASS InfoClass = pData->Iopb->Parameters.SetFileInformation.FileInformationClass;
+	if (InfoClass != FileDispositionInformation &&
+		InfoClass != FileDispositionInformationEx)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    // Check if this is a file deletion attempt (via CREATE)
-    // When FILE_DELETE_ON_CLOSE is set, the file will be deleted when the handle is closed
-    BOOLEAN isDeleteOperation = (Data->Iopb->Parameters.Create.Options & FILE_DELETE_ON_CLOSE) != 0;
+	// If no context skip post op
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+	NTSTATUS Status = FltGetStreamHandleContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+	if (!NT_SUCCESS(Status))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
-    // Check if this is a write attempt
-    BOOLEAN isWriteOperation = (Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess &
-        (FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA)) != 0;
+	BOOLEAN SkipItem = pStreamHandleCtx->fSkipItem;
+	FltReleaseContext((PFLT_CONTEXT)pStreamHandleCtx);
 
-    // Get file path
-    WCHAR filePath[MAX_PATH] = { 0 };
-    GetFilePath(Data, FltObjects, filePath, MAX_PATH);
+	if (SkipItem)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    if (!ShouldMonitorFile(filePath)) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
-    // For dangerous operations (write, delete), we need to analyze before allowing
-    if (isWriteOperation || isDeleteOperation) {
-        // Allocate file event structure
-        PFILE_MONITOR_EVENT fileEvent = (PFILE_MONITOR_EVENT)ExAllocatePoolWithTag(
-            NonPagedPool,
-            sizeof(FILE_MONITOR_EVENT),
-            'EVFS'
-        );
-
-        if (!fileEvent) {
-            DbgError("Failed to allocate file event");
-            return FLT_PREOP_SUCCESS_NO_CALLBACK;
-        }
-
-        RtlZeroMemory(fileEvent, sizeof(FILE_MONITOR_EVENT));
-
-        // Fill event details
-        fileEvent->ProcessId = FltGetRequestorProcessId(Data);
-        fileEvent->EventType = isDeleteOperation ? FileEventDelete : FileEventCreate;
-        fileEvent->State = FileOperationPending;
-
-        // Get process name
-        GetProcessImageName(
-            (HANDLE)fileEvent->ProcessId,
-            fileEvent->ProcessName,
-            MAX_PATH
-        );
-
-        // Copy file path
-        RtlCopyMemory(fileEvent->FilePath, filePath, sizeof(WCHAR) * MAX_PATH);
-
-        // Get file info
-        FILE_STANDARD_INFORMATION standardInfo = { 0 };
-        ULONG bytesReturned = 0;
-        NTSTATUS status = FltQueryInformationFile(
-            FltObjects->Instance,
-            FltObjects->FileObject,
-            &standardInfo,
-            sizeof(FILE_STANDARD_INFORMATION),
-            FileStandardInformation,
-            &bytesReturned
-        );
-
-        if (NT_SUCCESS(status)) {
-            fileEvent->IsDirectory = standardInfo.Directory;
-            fileEvent->FileSize = standardInfo.EndOfFile.QuadPart;
-        }
-
-        // Set timestamp
-        KeQuerySystemTime(&fileEvent->Timestamp);
-
-        // Initialize synchronization event
-        KeInitializeEvent(&fileEvent->CompletionEvent, NotificationEvent, FALSE);
-
-        // Add to pending operations list
-        KIRQL oldIrql;
-        KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-        InsertTailList(&g_FilterData.PendingOperationsList, &fileEvent->ListEntry);
-        KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-        // Send event to user mode for analysis
-        status = SendFileEventToUser(fileEvent);
-        if (!NT_SUCCESS(status)) {
-            DbgError("Failed to send create/delete event to user mode: 0x%X", status);
-
-            // Remove from pending list since we couldn't send it
-            KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-            RemoveEntryList(&fileEvent->ListEntry);
-            KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-            // Free the event structure
-            ExFreePoolWithTag(fileEvent, 'EVFS');
-
-            // Allow the operation to proceed by default
-            return FLT_PREOP_SUCCESS_NO_CALLBACK;
-        }
-
-        // Wait for verdict with timeout
-        LARGE_INTEGER timeout;
-        timeout.QuadPart = -10 * 1000 * 1000 * 10; // 10 seconds timeout
-
-        status = KeWaitForSingleObject(
-            &fileEvent->CompletionEvent,
-            Executive,
-            KernelMode,
-            FALSE,
-            &timeout
-        );
-
-        if (status == STATUS_TIMEOUT) {
-            DbgError("File operation verdict timed out for: %ws", fileEvent->FilePath);
-            fileEvent->AllowOperation = TRUE; // Default to allow on timeout
-        }
-        else if (!NT_SUCCESS(status)) {
-            DbgError("Failed to wait for file event: %ws", fileEvent->FilePath);
-            fileEvent->AllowOperation = TRUE; // Default to allow on error
-        }
-
-        // Remove from pending list
-        KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-        RemoveEntryList(&fileEvent->ListEntry);
-        KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-        // Apply verdict
-        if (!fileEvent->AllowOperation) {
-            DbgInfo("Blocking file operation for: %ws", fileEvent->FilePath);
-            Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-            Data->IoStatus.Information = 0;
-
-            // Free the event structure
-            ExFreePoolWithTag(fileEvent, 'EVFS');
-
-            return FLT_PREOP_COMPLETE;
-        }
-
-        DbgInfo("Allowing file operation for: %ws", fileEvent->FilePath);
-
-        // Free the event structure
-        ExFreePoolWithTag(fileEvent, 'EVFS');
-    }
-
-    // For read operations, we can monitor in post-callback
-    return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+	return FLT_PREOP_SYNCHRONIZE;
 }
 
 FLT_POSTOP_CALLBACK_STATUS
-PostCreate(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_opt_ PVOID CompletionContext,
-    _In_ FLT_POST_OPERATION_FLAGS Flags
-)
+FLTAPI
+PostSetFileInfo(
+	__inout PFLT_CALLBACK_DATA pData,
+	__in PCFLT_RELATED_OBJECTS pFltObjects,
+	__in_opt PVOID /*pCompletionContext*/,
+	__in FLT_POST_OPERATION_FLAGS Flags)
 {
-    UNREFERENCED_PARAMETER(CompletionContext);
-    UNREFERENCED_PARAMETER(Flags);  
-    return FLT_POSTOP_FINISHED_PROCESSING;
+	if (!g_Monitor ||
+		FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) ||
+		!NT_SUCCESS(pData->IoStatus.Status))
+	{
+		return FLT_POSTOP_FINISHED_PROCESSING;
+	}
+
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+
+	__try
+	{
+
+		// Get stream ctx handle
+		NTSTATUS Status = FltGetStreamHandleContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+		if (pStreamHandleCtx == NULL)
+			return FLT_POSTOP_FINISHED_PROCESSING;
+
+		// Set delete information
+		FILE_INFORMATION_CLASS InfoClass = pData->Iopb->Parameters.SetFileInformation.FileInformationClass;
+		if (InfoClass == FileDispositionInformation)
+		{
+			pStreamHandleCtx->fDispositionDelete =
+				((PFILE_DISPOSITION_INFORMATION)(pData->Iopb->Parameters.SetFileInformation.InfoBuffer))->DeleteFile;
+		}
+		else if (InfoClass == FileDispositionInformationEx)
+		{
+			ULONG TempFlags = ((PFILE_DISPOSITION_INFORMATION_EX)(pData->Iopb->Parameters.SetFileInformation.InfoBuffer))->Flags;
+
+			if (FlagOn(TempFlags, FILE_DISPOSITION_ON_CLOSE))
+				pStreamHandleCtx->fDeleteOnClose = BOOLEAN_FLAG_ON(TempFlags, FILE_DISPOSITION_DELETE);
+			else
+				pStreamHandleCtx->fDispositionDelete = BOOLEAN_FLAG_ON(TempFlags, FILE_DISPOSITION_DELETE);
+		}
+	}
+	__finally
+	{
+		if (pStreamHandleCtx != NULL)
+			FltReleaseContext(pStreamHandleCtx);
+	}
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
 FLT_PREOP_CALLBACK_STATUS
-PreWrite(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Flt_CompletionContext_Outptr_ PVOID* CompletionContext
-)
+	FLTAPI
+	PreWrite(
+		_Inout_ PFLT_CALLBACK_DATA pData,
+		_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+		_Flt_CompletionContext_Outptr_ PVOID* /*pCompletionContext*/)
 {
-    UNREFERENCED_PARAMETER(CompletionContext);
+	if (!g_Monitor)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    // Only handle if monitoring is enabled
-    if (!g_FilterData.Monitoring || !g_FilterData.ClientPort) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	// At IRQLs above APC_LEVEL (i.e., at DISPATCH_LEVEL or higher), 
+	// you cannot safely access pageable memory, 
+	// perform certain synchronization, or call many system routines
+	if (KeGetCurrentIrql() > APC_LEVEL)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    // Get file context to check if we should monitor this file
-    PFILE_CONTEXT fileContext = NULL;
-    NTSTATUS status = FltGetFileContext(
-        FltObjects->Instance,
-        FltObjects->FileObject,
-        (PFLT_CONTEXT*)&fileContext
-    );
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+	NTSTATUS Status = FltGetStreamContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+	if (!NT_SUCCESS(Status) || pStreamHandleCtx == NULL)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
-    if (!NT_SUCCESS(status) || !fileContext || !fileContext->IsMonitored) {
-        if (fileContext) FltReleaseContext(fileContext);
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	//TODO:: Check if should skip write item
 
-    // For write operations, we need to analyze before allowing
-    PFILE_MONITOR_EVENT fileEvent = (PFILE_MONITOR_EVENT)ExAllocatePoolWithTag(
-        NonPagedPool,
-        sizeof(FILE_MONITOR_EVENT),
-        'EVFS'
-    );
+	auto& WriteParams = pData->Iopb->Parameters.Write;
 
-    if (!fileEvent) {
-        DbgError("Failed to allocate file event");
-        FltReleaseContext(fileContext);
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+	BOOLEAN fShouldPost = FALSE;
 
-    RtlZeroMemory(fileEvent, sizeof(FILE_MONITOR_EVENT));
+	do
+	{
+		auto& Info = pStreamHandleCtx->SequenceWriteInfo;
 
-    // Fill event details
-    fileEvent->ProcessId = FltGetRequestorProcessId(Data);
-    fileEvent->EventType = FileEventWrite;
-    fileEvent->State = FileOperationPending;
+		if (!Info.fEnabled)
+			break;
 
-    // Get process name
-    GetProcessImageName(
-        (HANDLE)fileEvent->ProcessId,
-        fileEvent->ProcessName,
-        MAX_PATH
-    );
+		if (WriteParams.Length == 0)
+			break;
 
-    // Copy file path from context
-    RtlCopyMemory(fileEvent->FilePath, fileContext->FilePath, sizeof(WCHAR) * MAX_PATH);
-    fileEvent->IsDirectory = FALSE;
-    fileEvent->FileSize = fileContext->FileSize;
+		UINT64 WritePos =
+			(WriteParams.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
+				WriteParams.ByteOffset.HighPart == -1) ?
+			pFltObjects->FileObject->CurrentByteOffset.QuadPart :
+			WriteParams.ByteOffset.QuadPart;
 
-    // Get write operation details
-    fileEvent->WriteOffset = Data->Iopb->Parameters.Write.ByteOffset.LowPart;
-    fileEvent->WriteLength = Data->Iopb->Parameters.Write.Length;
+		if (WritePos != Info.nNextPos)
+		{
+			Info.fEnabled = FALSE;
+			break;
+		}
 
-    // Capture write buffer data for analysis (up to 1KB)
-    if (Data->Iopb->Parameters.Write.Length > 0) {
-        PVOID writeBuffer = Data->Iopb->Parameters.Write.WriteBuffer;
+		fShouldPost = TRUE;
 
-        if (writeBuffer != NULL) {
-            // Determine how much data to capture (max 1KB)
-            ULONG captureSize = min(Data->Iopb->Parameters.Write.Length, sizeof(fileEvent->WriteData));
+	} while (FALSE);
 
-            // Safely copy the data
-            __try {
-                // Check if the buffer is from user mode and handle accordingly
-                if (Data->RequestorMode == UserMode) {
-                    // User mode buffer - probe it first
-                    ProbeForRead(writeBuffer, captureSize, sizeof(UCHAR));
-                }
+	if (!pStreamHandleCtx->fDirty)
+		fShouldPost = TRUE;
 
-                // Copy the data
-                RtlCopyMemory(fileEvent->WriteData, writeBuffer, captureSize);
-                fileEvent->WriteBufferSize = captureSize;
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {
-                DbgError("Exception while capturing write buffer");
-                fileEvent->WriteBufferSize = 0;
-            }
-        }
-    }
+	FltReleaseContext(pStreamHandleCtx);
 
-    // Set timestamp
-    KeQuerySystemTime(&fileEvent->Timestamp);
+	if (!fShouldPost)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    // Release file context as we don't need it anymore
-    FltReleaseContext(fileContext);
-
-    // Initialize synchronization event
-    KeInitializeEvent(&fileEvent->CompletionEvent, NotificationEvent, FALSE);
-
-    // Add to pending operations list
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-    InsertTailList(&g_FilterData.PendingOperationsList, &fileEvent->ListEntry);
-    KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-    // Send event to user mode for analysis
-    status = SendFileEventToUser(fileEvent);
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to send write event to user mode: 0x%X", status);
-
-        // Remove from pending list since we couldn't send it
-        KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-        RemoveEntryList(&fileEvent->ListEntry);
-        KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-        // Free the event structure
-        ExFreePoolWithTag(fileEvent, 'EVFS');
-
-        // Allow the operation to proceed by default
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
-    // Wait for verdict with timeout
-    LARGE_INTEGER timeout;
-    timeout.QuadPart = -10 * 1000 * 1000 * 10; // 10 seconds timeout
-
-    status = KeWaitForSingleObject(
-        &fileEvent->CompletionEvent,
-        Executive,
-        KernelMode,
-        FALSE,
-        &timeout
-    );
-
-    if (status == STATUS_TIMEOUT) {
-        DbgError("Write operation verdict timed out for: %ws", fileEvent->FilePath);
-        fileEvent->AllowOperation = TRUE; // Default to allow on timeout
-    }
-    else if (!NT_SUCCESS(status)) {
-        DbgError("Failed to wait for write event: %ws", fileEvent->FilePath);
-        fileEvent->AllowOperation = TRUE; // Default to allow on error
-    }
-
-    // Remove from pending list
-    KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-    RemoveEntryList(&fileEvent->ListEntry);
-    KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-    // Apply verdict
-    if (!fileEvent->AllowOperation) {
-        DbgInfo("Blocking write operation for: %ws (offset: %lu, length: %lu)",
-            fileEvent->FilePath, fileEvent->WriteOffset, fileEvent->WriteLength);
-        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-        Data->IoStatus.Information = 0;
-
-        // Free the event structure
-        ExFreePoolWithTag(fileEvent, 'EVFS');
-
-        return FLT_PREOP_COMPLETE;
-    }
-
-    DbgInfo("Allowing write operation for: %ws (offset: %lu, length: %lu)",
-        fileEvent->FilePath, fileEvent->WriteOffset, fileEvent->WriteLength);
-
-    // Free the event structure
-    ExFreePoolWithTag(fileEvent, 'EVFS');
-
-    return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+	return FLT_PREOP_SYNCHRONIZE;
 }
 
 FLT_POSTOP_CALLBACK_STATUS
-PostWrite(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_opt_ PVOID CompletionContext,
-    _In_ FLT_POST_OPERATION_FLAGS Flags
-)
+	FLTAPI
+	PostWrite(
+		__inout PFLT_CALLBACK_DATA pData,
+		__in PCFLT_RELATED_OBJECTS pFltObjects,
+		__in_opt PVOID /*pCompletionContext*/,
+		__in FLT_POST_OPERATION_FLAGS Flags)
 {
-    UNREFERENCED_PARAMETER(CompletionContext);
-    UNREFERENCED_PARAMETER(Flags);
+	if (!g_Monitor)
+		return FLT_POSTOP_FINISHED_PROCESSING;
+	if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING))
+		return FLT_POSTOP_FINISHED_PROCESSING;
 
-    return FLT_POSTOP_FINISHED_PROCESSING;
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+	__try
+	{
+		NTSTATUS Status = FltGetStreamContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+		if (!NT_SUCCESS(Status) || pStreamHandleCtx == NULL)
+		{
+			return FLT_POSTOP_FINISHED_PROCESSING;
+		}
+
+		//TODO:: LOG
+
+		// If any bytes was written
+		if (NT_SUCCESS(pData->IoStatus.Status))
+		{
+			pStreamHandleCtx->fDirty = TRUE;
+			// Disable detect sequence read
+			pStreamHandleCtx->SequenceReadInfo.fEnabled = FALSE;
+		}
+
+		// Sequence action detection
+		do
+		{
+			auto& Info = pStreamHandleCtx->SequenceWriteInfo;
+
+			if (!Info.fEnabled)
+				break;
+
+			// Operation failed
+			if (!NT_SUCCESS(pData->IoStatus.Status))
+			{
+				Info.fEnabled = FALSE;
+				break;
+			}
+
+
+			// TODO:: Write operation we should update the file hash
+
+
+		} while (FALSE);
+
+	}
+	__finally
+	{
+		if (pStreamHandleCtx != NULL)
+			FltReleaseContext(pStreamHandleCtx);
+	}
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
 FLT_PREOP_CALLBACK_STATUS
+FLTAPI
 PreRead(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Flt_CompletionContext_Outptr_ PVOID* CompletionContext
-)
+	_Inout_ PFLT_CALLBACK_DATA pData,
+	_In_ PCFLT_RELATED_OBJECTS pFltObjects,
+	_Flt_CompletionContext_Outptr_ PVOID* /*pCompletionContext*/)
 {
-    UNREFERENCED_PARAMETER(Data);
-    UNREFERENCED_PARAMETER(CompletionContext);
+	if (!g_Monitor) 
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	if (KeGetCurrentIrql() > APC_LEVEL) 
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    return FLT_PREOP_SUCCESS_WITH_CALLBACK;
+	// if no context - skip post operation
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+	NTSTATUS ns = FltGetStreamHandleContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+	if (!NT_SUCCESS(ns) || pStreamHandleCtx == NULL)
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	// TODO:: Skipping by rules
+
+	if(pStreamHandleCtx->fSkipItem)
+	{
+		FltReleaseContext(pStreamHandleCtx);
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	auto& ReadParams = pData->Iopb->Parameters.Read;
+
+	// postRead is necessary (checking of operation success) 
+	BOOLEAN fPostIsNecessary = false;
+
+	do
+	{
+		SEQUENCE_ACTION& info = pStreamHandleCtx->SequenceReadInfo;
+		if (!info.fEnabled)
+			break;
+
+		// not interesting action
+		if (ReadParams.Length == 0)
+			break;
+
+		// getting reading pos from parameters or current file pos
+		UINT64 nReadPos =
+			(ReadParams.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION
+		     && ReadParams.ByteOffset.HighPart == -1) ?
+			pFltObjects->FileObject->CurrentByteOffset.QuadPart :
+			ReadParams.ByteOffset.QuadPart;
+
+		// check read position
+		if (nReadPos != info.nNextPos)
+		{
+			info.fEnabled = FALSE;
+			break;
+		}
+
+		fPostIsNecessary = TRUE;
+
+	} while (false);
+
+	FltReleaseContext(pStreamHandleCtx);
+	return fPostIsNecessary ? FLT_PREOP_SYNCHRONIZE : FLT_PREOP_SUCCESS_NO_CALLBACK;
 }
 
 FLT_POSTOP_CALLBACK_STATUS
+FLTAPI
 PostRead(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_opt_ PVOID CompletionContext,
-    _In_ FLT_POST_OPERATION_FLAGS Flags
-)
+	__inout PFLT_CALLBACK_DATA pData,
+	__in PCFLT_RELATED_OBJECTS pFltObjects,
+	__in_opt PVOID /*pCompletionContext*/,
+	__in FLT_POST_OPERATION_FLAGS Flags)
 {
-    UNREFERENCED_PARAMETER(CompletionContext);
-    UNREFERENCED_PARAMETER(Flags);
 
-    return FLT_POSTOP_FINISHED_PROCESSING;
-}
+	if (!g_Monitor)
+		return FLT_POSTOP_FINISHED_PROCESSING;
+	if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING))
+		return FLT_POSTOP_FINISHED_PROCESSING;
 
-FLT_PREOP_CALLBACK_STATUS
-PreSetInformation(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Flt_CompletionContext_Outptr_ PVOID* CompletionContext
-)
-{
-    UNREFERENCED_PARAMETER(CompletionContext);
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
+	__try
+	{
+		NTSTATUS Status = FltGetStreamHandleContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+		if (!NT_SUCCESS(Status) || pStreamHandleCtx == NULL)
+			return FLT_POSTOP_FINISHED_PROCESSING;
 
-    // Only handle if monitoring is enabled
-    if (!g_FilterData.Monitoring || !g_FilterData.ClientPort) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+		// TODO::LOG
 
-    // Only interested in delete and rename operations
-    FILE_INFORMATION_CLASS fileInfoClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+		do {
 
-    if (fileInfoClass != FileDispositionInformation &&
-        fileInfoClass != FileDispositionInformationEx &&
-        fileInfoClass != FileRenameInformation &&
-        fileInfoClass != FileRenameInformationEx) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+			SEQUENCE_ACTION& Info = pStreamHandleCtx->SequenceReadInfo;
 
-    // Get file context
-    PFILE_CONTEXT fileContext = NULL;
-    NTSTATUS status = FltGetFileContext(
-        FltObjects->Instance,
-        FltObjects->FileObject,
-        (PFLT_CONTEXT*)&fileContext
-    );
+			if (!Info.fEnabled)
+				break;
 
-    if (!NT_SUCCESS(status) || !fileContext || !fileContext->IsMonitored) {
-        if (fileContext) FltReleaseContext(fileContext);
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+			if (!NT_SUCCESS(Status))
+			{
+				Info.fEnabled = FALSE;
+			}
 
-    // For delete and rename operations, we need to analyze before allowing
-    PFILE_MONITOR_EVENT fileEvent = (PFILE_MONITOR_EVENT)ExAllocatePoolWithTag(
-        NonPagedPool,
-        sizeof(FILE_MONITOR_EVENT),
-        'EVFS'
-    );
+			// TODO::Update Hash
 
-    if (!fileEvent) {
-        DbgError("Failed to allocate file event");
-        FltReleaseContext(fileContext);
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+		} while (FALSE);
 
-    RtlZeroMemory(fileEvent, sizeof(FILE_MONITOR_EVENT));
+	}
+	__finally
+	{
+		if (pStreamHandleCtx != NULL)
+			FltReleaseContext(pStreamHandleCtx);
+	}
 
-    // Fill event details
-    fileEvent->ProcessId = FltGetRequestorProcessId(Data);
-
-    // Determine the event type
-    if (fileInfoClass == FileDispositionInformation ||
-        fileInfoClass == FileDispositionInformationEx) {
-
-        // Check if this is actually a delete operation
-        BOOLEAN deleteFile = FALSE;
-
-        if (fileInfoClass == FileDispositionInformation) {
-            FILE_DISPOSITION_INFORMATION* dispInfo =
-                (FILE_DISPOSITION_INFORMATION*)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
-            deleteFile = dispInfo->DeleteFile;
-        }
-        else {
-            FILE_DISPOSITION_INFORMATION_EX* dispInfoEx =
-                (FILE_DISPOSITION_INFORMATION_EX*)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
-            deleteFile = (dispInfoEx->Flags & FILE_DISPOSITION_DELETE) != 0;
-        }
-
-        if (!deleteFile) {
-            // Not actually deleting, allow it
-            ExFreePoolWithTag(fileEvent, 'EVFS');
-            FltReleaseContext(fileContext);
-            return FLT_PREOP_SUCCESS_NO_CALLBACK;
-        }
-
-        fileEvent->EventType = FileEventDelete;
-    }
-    else {
-        fileEvent->EventType = FileEventRename;
-    }
-
-    fileEvent->State = FileOperationPending;
-
-    // Get process name
-    GetProcessImageName(
-        (HANDLE)fileEvent->ProcessId,
-        fileEvent->ProcessName,
-        MAX_PATH
-    );
-
-    // Copy file path from context
-    RtlCopyMemory(fileEvent->FilePath, fileContext->FilePath, sizeof(WCHAR) * MAX_PATH);
-    fileEvent->IsDirectory = fileContext->IsMonitored;
-    fileEvent->FileSize = fileContext->FileSize;
-
-    // Set timestamp
-    KeQuerySystemTime(&fileEvent->Timestamp);
-
-    // Release file context as we don't need it anymore
-    FltReleaseContext(fileContext);
-
-    // Initialize synchronization event
-    KeInitializeEvent(&fileEvent->CompletionEvent, NotificationEvent, FALSE);
-
-    // Add to pending operations list
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-    InsertTailList(&g_FilterData.PendingOperationsList, &fileEvent->ListEntry);
-    KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-    // Send event to user mode for analysis
-    status = SendFileEventToUser(fileEvent);
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to send setinfo event to user mode: 0x%X", status);
-
-        // Remove from pending list since we couldn't send it
-        KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-        RemoveEntryList(&fileEvent->ListEntry);
-        KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-        // Free the event structure
-        ExFreePoolWithTag(fileEvent, 'EVFS');
-
-        // Allow the operation to proceed by default
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
-
-    // Wait for verdict with timeout
-    LARGE_INTEGER timeout;
-    timeout.QuadPart = -10 * 1000 * 1000 * 10; // 10 seconds timeout
-
-    status = KeWaitForSingleObject(
-        &fileEvent->CompletionEvent,
-        Executive,
-        KernelMode,
-        FALSE,
-        &timeout
-    );
-
-    if (status == STATUS_TIMEOUT) {
-        DbgError("SetInfo operation verdict timed out for: %ws", fileEvent->FilePath);
-        fileEvent->AllowOperation = TRUE; // Default to allow on timeout
-    }
-    else if (!NT_SUCCESS(status)) {
-        DbgError("Failed to wait for setinfo event: %ws", fileEvent->FilePath);
-        fileEvent->AllowOperation = TRUE; // Default to allow on error
-    }
-
-    // Remove from pending list
-    KeAcquireSpinLock(&g_FilterData.OperationsListLock, &oldIrql);
-    RemoveEntryList(&fileEvent->ListEntry);
-    KeReleaseSpinLock(&g_FilterData.OperationsListLock, oldIrql);
-
-    // Apply verdict
-    if (!fileEvent->AllowOperation) {
-        DbgInfo("Blocking setinfo operation for: %ws", fileEvent->FilePath);
-        Data->IoStatus.Status = STATUS_ACCESS_DENIED;
-        Data->IoStatus.Information = 0;
-
-        // Free the event structure
-        ExFreePoolWithTag(fileEvent, 'EVFS');
-
-        return FLT_PREOP_COMPLETE;
-    }
-
-    DbgInfo("Allowing setinfo operation for: %ws", fileEvent->FilePath);
-
-    // Free the event structure
-    ExFreePoolWithTag(fileEvent, 'EVFS');
-
-    return FLT_PREOP_SUCCESS_WITH_CALLBACK;
-}
-
-
-
-FLT_POSTOP_CALLBACK_STATUS
-PostSetInformation(
-    _Inout_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_opt_ PVOID CompletionContext,
-    _In_ FLT_POST_OPERATION_FLAGS Flags
-)
-{
-    UNREFERENCED_PARAMETER(CompletionContext);
-    UNREFERENCED_PARAMETER(Flags);
-
-    return FLT_POSTOP_FINISHED_PROCESSING;
-}
-
-
-
-NTSTATUS
-SendFileEventToUser(
-    _In_ PFILE_MONITOR_EVENT FileEvent
-)
-{
-    // Check if client port is available
-    if (!g_FilterData.ClientPort) {
-        return STATUS_PORT_DISCONNECTED;
-    }
-
-    NTSTATUS status;
-    ULONG replyLength = 0;
-
-    // Send the message to user mode
-    status = FltSendMessage(
-        g_FilterData.Filter,
-        &g_FilterData.ClientPort,
-        FileEvent,
-        sizeof(FILE_MONITOR_EVENT),
-        NULL,
-        &replyLength,
-        NULL
-    );
-
-    if (!NT_SUCCESS(status)) {
-        DbgError("Failed to send file event to user mode: 0x%X", status);
-    }
-
-    return status;
+	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
 NTSTATUS
-GetProcessImageName(
-    _In_ HANDLE ProcessId,
-    _Out_ PWCHAR ProcessName,
-    _In_ ULONG ProcessNameLength
+SendFileEventNoResponse(
+	kEventType EventType,
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx)
+{
+	FILE_EVENT kFileEvent;
+	RtlZeroMemory(&kFileEvent, sizeof(FILE_EVENT));
+
+	PINSTANCE_CONTEXT pInstCtx = pStreamHandleCtx->pInstCtx;
+
+	kFileEvent.Header.EventType = EventType;
+	kFileEvent.Header.TickTime = getTickCount64();
+	kFileEvent.Header.ProcessId = pStreamHandleCtx->nOpeningProcessId;
+
+	RtlCopyMemory(kFileEvent.FilePath, pStreamHandleCtx->pNameInfo->Name.Buffer, pStreamHandleCtx->pNameInfo->Name.Length);
+	RtlCopyMemory(kFileEvent.FileVolumeGuid, pInstCtx->usVolumeGuid.Buffer, pInstCtx->usVolumeGuid.Length);
+	RtlCopyMemory(kFileEvent.FileVolumeType, ConvertDriverTypeToString(pInstCtx->DriverType), EVENT_TYPE_WCHAR_LENGTH);
+
+	if (pInstCtx->usDeviceName.Length != 0)
+		RtlCopyMemory(kFileEvent.FileVolumeDevice, pInstCtx->usDeviceName.Buffer, pInstCtx->usDeviceName.Length);
+
+	if (EventType == kEventType::FileDataRead && pStreamHandleCtx->SequenceReadInfo.fEnabled)
+		BytesToHexString(pStreamHandleCtx->SequenceReadInfo.HashedData, 32, kFileEvent.FileRawHash);
+
+	if (EventType == kEventType::FileDataWrite && pStreamHandleCtx->SequenceWriteInfo.fEnabled)
+		BytesToHexString(pStreamHandleCtx->SequenceWriteInfo.HashedData, 32, kFileEvent.FileRawHash);
+
+	// TODO:: Change to use queue and workers
+	LARGE_INTEGER Timeout = {};
+	Timeout.QuadPart =
+		(LONGLONG)c_nSendMsgTimeout *
+		(LONGLONG)1000 /*micro*/ *
+		(LONGLONG)10 /*nano*/ *
+		(LONGLONG)-1;
+
+	NTSTATUS Status = STATUS_SUCCESS;
+	Status = FltSendMessage(g_pFilter, &g_pClientPort, (PVOID)&kFileEvent, sizeof(FILE_EVENT), NULL, NULL, &Timeout);
+
+	return Status;
+}
+
+NTSTATUS
+UpdateHash(
+	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx,
+	PFLT_CALLBACK_DATA pData,
+	kEventType EventType /*Operation Read or Write*/
 )
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    PEPROCESS process = NULL;
-    PUNICODE_STRING processImageName = NULL;
+	auto& ReadParams = pData->Iopb->Parameters.Read;
+	auto& WriteParams = pData->Iopb->Parameters.Write;
 
-    // Clear the output buffer
-    RtlZeroMemory(ProcessName, ProcessNameLength * sizeof(WCHAR));
+	SEQUENCE_ACTION& ActionInfo = EventType == kEventType::FileDataRead ? pStreamHandleCtx->SequenceReadInfo : pStreamHandleCtx->SequenceWriteInfo;
 
-    // Get the EPROCESS pointer for the process
-    status = PsLookupProcessByProcessId(ProcessId, &process);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
+	SIZE_T DataSize = pData->IoStatus.Information;
 
-    // Get the image name
-    processImageName = PsGetProcessImageFileName(process);
-    if (processImageName) {
-        // Convert to wide string and copy to output buffer
-        // Note: This is simplified and doesn't handle ANSI to Unicode properly
-        // A real implementation would use proper conversion functions
-        ANSI_STRING ansiString;
-        RtlInitAnsiString(&ansiString, (PCHAR)processImageName);
+	PMDL pHeadMdl = (EventType == kEventType::FileDataRead) ? ReadParams.MdlAddress : WriteParams.MdlAddress;
 
-        UNICODE_STRING unicodeString;
-        status = RtlAnsiStringToUnicodeString(&unicodeString, &ansiString, TRUE);
 
-        if (NT_SUCCESS(status)) {
-            // Copy the name (ensuring we don't overflow)
-            ULONG copyLength = min(ProcessNameLength, unicodeString.Length / sizeof(WCHAR));
-            RtlCopyMemory(ProcessName, unicodeString.Buffer, copyLength * sizeof(WCHAR));
-            ProcessName[copyLength] = L'\0';
+	// Direct IO
+	if (pHeadMdl != NULL)
+	{
+		SIZE_T RestDataSize = DataSize;
+		for (PMDL pCurrMdl = pHeadMdl; pCurrMdl != NULL && RestDataSize != 0; pCurrMdl = pCurrMdl->Next)
+		{
+			PVOID pDataBuffer = MmGetSystemAddressForMdlSafe(pCurrMdl, NormalPagePriority | MdlMappingNoExecute);
+			if (pDataBuffer == NULL)
+			{
+				return STATUS_INVALID_PARAMETER_3;
+			}
 
-            // Free the Unicode string
-            RtlFreeUnicodeString(&unicodeString);
-        }
-    }
+			SIZE_T nCurrMdlDataSize = min(MmGetMdlByteCount(pCurrMdl), RestDataSize);
 
-    // Dereference the process
-    ObDereferenceObject(process);
-    return status;
+		}
+	}
+}
+
+NTSTATUS GetDiskPdoName(PDEVICE_OBJECT pVolumeDeviceObject, UNICODE_STRING* pDst,
+	PVOID* ppBuffer)
+{
+	PDEVICE_OBJECT pStoragePdo = nullptr;
+	__try
+	{
+		GetVolumeObject(pVolumeDeviceObject, &pStoragePdo);
+
+		UNICODE_STRING usPdoName;
+		UINT8 Buffer[0x400] = {};
+		usPdoName.Buffer = (PWCH)Buffer;
+		usPdoName.MaximumLength = sizeof(Buffer);
+		usPdoName.Length = 0;
+		GetDeviceName(pStoragePdo, &usPdoName);
+		CloneUnicodeString(&usPdoName, pDst, ppBuffer);
+	}
+	__finally
+	{
+		if (pStoragePdo != nullptr)
+			ObDereferenceObject(pStoragePdo);
+	}
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS
+CollectUsbInfo(
+		PCFLT_RELATED_OBJECTS pFltObjects,
+		PINSTANCE_CONTEXT pInCtx)
+{
+	PDEVICE_OBJECT pDiskDeviceObj = NULL;
+	NTSTATUS Status = STATUS_SUCCESS;
+	__try
+	{
+		// Get the device object
+		Status = FltGetDiskDeviceObject(pFltObjects->Volume, &pDiskDeviceObj);
+		if (!NT_SUCCESS(Status) || !pDiskDeviceObj)
+		{
+			return STATUS_UNSUCCESSFUL; // Failed to get disk device object
+		}
+
+		CHAR Buffer[512];
+		PSTORAGE_DEVICE_DESCRIPTOR pDeviceDescriptor = (PSTORAGE_DEVICE_DESCRIPTOR)&Buffer[0];
+
+		STORAGE_PROPERTY_QUERY PropertyQuery;
+		PropertyQuery.PropertyId = StorageDeviceProperty;
+		PropertyQuery.QueryType = PropertyStandardQuery;
+		Status = KDeviceIoControl(
+			pDiskDeviceObj, /*Send IOCTL to the Device handling this volume*/
+			IOCTL_STORAGE_QUERY_PROPERTY,
+			&PropertyQuery,
+			sizeof(PropertyQuery),
+			pDeviceDescriptor,
+			sizeof(pDeviceDescriptor));
+		if (!NT_SUCCESS(Status))
+		{
+			// Cant get the device descriptor for this volume
+			return STATUS_SUCCESS;
+		}
+
+		// Check if the device is USB
+		if (pDeviceDescriptor->BusType != BusTypeUsb)
+		{
+			return STATUS_SUCCESS; // Not USB device
+		}
+
+		// USB device detected
+		pInCtx->fIsUsb = TRUE;
+
+		Status = GetDiskPdoName(
+			pDiskDeviceObj,
+			&pInCtx->usDiskPdoName,
+			(PVOID*)&pInCtx->pDiskPdoBuffer);
+		if (!NT_SUCCESS(Status))
+		{
+			return Status; // Failed to get disk PDO name
+		}
+
+
+		// Get the container ID
+		Status =  GetContainerId(
+			pDiskDeviceObj,
+			&pInCtx->usContainerId,
+			(PVOID*) & pInCtx->pDeviceNameBuffer);
+
+		if (!NT_SUCCESS(Status))
+		{
+			return Status; // Failed to get container ID
+		}
+
+	}
+	__finally
+	{
+		if (pDiskDeviceObj)
+		{
+			ObDereferenceObject(pDiskDeviceObj); // Dereference the disk device object
+		}
+	}
+
+	return STATUS_SUCCESS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Meta data for the file event
+//////////////////////////////////////////////////////////////////////////
+
+LARGE_INTEGER
+GetCurrentTimeStamp()
+{
+	LARGE_INTEGER ts;
+	KeQuerySystemTimePrecise(&ts);
+	return ts;
+}
+
+
+NTSTATUS GetNormalizedFilePath(
+	PFLT_CALLBACK_DATA pData,
+	PCFLT_RELATED_OBJECTS pFltObjects,
+	PUNICODE_STRING pNormalizedPath
+)
+{
+	NTSTATUS status;
+	PFLT_FILE_NAME_INFORMATION pNameInfo;
+
+	status = FltGetFileNameInformation(
+		pData,
+		FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_ALWAYS_ALLOW_CACHE_LOOKUP,
+		&pNameInfo
+	);
+
+	if (NT_SUCCESS(status)) {
+		status = FltParseFileNameInformation(pNameInfo);
+		if (NT_SUCCESS(status)) {
+			*pNormalizedPath = pNameInfo->Name;
+		}
+		FltReleaseFileNameInformation(pNameInfo);
+	}
+	return status;
+}
+
+
+NTSTATUS
+QueryFileSize(
+	PFLT_INSTANCE pInstance,
+	PFILE_OBJECT pFileObject,
+	PULONGLONG pFileSize
+)
+{
+	NTSTATUS Status;
+	FILE_STANDARD_INFORMATION FileInfo = { 0 };
+
+	Status = FltQueryInformationFile(
+		pInstance,
+		pFileObject,
+		&FileInfo,
+		sizeof(FileInfo),
+		FileStandardInformation,
+		NULL
+	);
+
+	if (NT_SUCCESS(Status)) {
+		*pFileSize = FileInfo.EndOfFile.QuadPart;
+	}
+
+	return Status;
+}
+
+ULONG
+GetRequestorProcessId(
+	PFLT_CALLBACK_DATA pData
+)
+{
+	return FltGetRequestorProcessId(pData);
+}
+
+NTSTATUS
+GetRenameTargetPath(
+	PFLT_CALLBACK_DATA pData,
+	PUNICODE_STRING pTargetName
+)
+{
+	if (!pData || !pTargetName)
+		return STATUS_INVALID_PARAMETER;
+	
+	if (pData->Iopb->Parameters.SetFileInformation.FileInformationClass != FileRenameInformation &&
+		pData->Iopb->Parameters.SetFileInformation.FileInformationClass != FileRenameInformationEx)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	PFILE_RENAME_INFORMATION RenameInfo = (PFILE_RENAME_INFORMATION)pData->Iopb->Parameters.SetFileInformation.InfoBuffer;
+
+	if (!RenameInfo || RenameInfo->FileNameLength == 0)
+		return STATUS_INVALID_PARAMETER;
+
+	pTargetName->Length = (USHORT)RenameInfo->FileNameLength;
+	pTargetName->MaximumLength = pTargetName->Length;
+	pTargetName->Buffer = RenameInfo->FileName;
+
+	return STATUS_SUCCESS;
+}
+VOID
+ExtractCreateParameters(
+	PFLT_CALLBACK_DATA Data,
+	ACCESS_MASK* DesiredAccess,
+	ULONG* CreateDisposition,
+	ULONG* CreateOptions,
+	ULONG* FileAttributes,
+	ULONG* ShareAccess
+)
+{
+	*DesiredAccess = Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
+	*CreateOptions = Data->Iopb->Parameters.Create.Options & 0xFFFFFFF0;
+	*CreateDisposition = Data->Iopb->Parameters.Create.Options & 0x0000000F;
+	*FileAttributes = Data->Iopb->Parameters.Create.FileAttributes;
+	*ShareAccess = Data->Iopb->Parameters.Create.ShareAccess;
 }
 
 VOID
-GetFilePath(
-    _In_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _Out_ PWCHAR FilePath,
-    _In_ ULONG FilePathLength
-)
+DebugPrintAccessMask(ACCESS_MASK access)
 {
-    PFLT_FILE_NAME_INFORMATION nameInfo = NULL;
-    NTSTATUS status;
-
-    // Clear the output buffer
-    RtlZeroMemory(FilePath, FilePathLength * sizeof(WCHAR));
-
-    // Get the file name information
-    status = FltGetFileNameInformation(
-        Data,
-        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
-        &nameInfo
-    );
-
-    if (NT_SUCCESS(status)) {
-        // Parse the file name information
-        status = FltParseFileNameInformation(nameInfo);
-
-        if (NT_SUCCESS(status)) {
-            // Copy the name (ensuring we don't overflow)
-            ULONG copyLength = min(FilePathLength - 1, nameInfo->Name.Length / sizeof(WCHAR));
-            RtlCopyMemory(FilePath, nameInfo->Name.Buffer, copyLength * sizeof(WCHAR));
-            FilePath[copyLength] = L'\0';
-        }
-
-        // Release the file name information
-        FltReleaseFileNameInformation(nameInfo);
-    }
-    else {
-        // Failed to get file name, try to get it from the FileObject
-        if (FltObjects && FltObjects->FileObject && FltObjects->FileObject->FileName.Length > 0) {
-            ULONG copyLength = min(FilePathLength - 1, FltObjects->FileObject->FileName.Length / sizeof(WCHAR));
-            RtlCopyMemory(FilePath, FltObjects->FileObject->FileName.Buffer, copyLength * sizeof(WCHAR));
-            FilePath[copyLength] = L'\0';
-        }
-        else {
-            // Last resort, just put "Unknown"
-            RtlCopyMemory(FilePath, L"Unknown", 7 * sizeof(WCHAR));
-        }
-    }
+	if (access & GENERIC_READ) DbgPrint("  GENERIC_READ\n");
+	if (access & GENERIC_WRITE) DbgPrint("  GENERIC_WRITE\n");
+	if (access & GENERIC_EXECUTE) DbgPrint("  GENERIC_EXECUTE\n");
+	if (access & DELETE) DbgPrint("  DELETE\n");
+	if (access & FILE_READ_DATA) DbgPrint("  FILE_READ_DATA\n");
+	if (access & FILE_WRITE_DATA) DbgPrint("  FILE_WRITE_DATA\n");
+	if (access & FILE_EXECUTE) DbgPrint("  FILE_EXECUTE\n");
 }
-

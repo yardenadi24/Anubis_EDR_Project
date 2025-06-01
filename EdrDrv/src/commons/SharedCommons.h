@@ -2,6 +2,8 @@
 // Avoid including kernel or user headers directly
 #define MAX_PATH 260
 #define BASE_DEVICE_NAME  L"AnubisEdrDevice"
+#define EVENT_TYPE_WCHAR_LENGTH 30
+
 
 typedef unsigned long ULONG;
 typedef UCHAR BOOLEAN;
@@ -11,6 +13,79 @@ typedef struct _AGENT_PROCESS_EVENT {
     WCHAR ImageFileName[MAX_PATH];
     BOOLEAN AllowProcess;
 }AGENT_PROCESS_EVENT, * PAGENT_PROCESS_EVENT;
+
+
+enum class kEventType
+{
+    ProcessCreate = 0,
+    ProcessTerminate,
+    RegistryKeyNameChange,
+    RegistryKeyDelete,
+    RegistryValueSet,
+    RegistryValueDelete,
+    FileCreate,
+    FileDelete,
+    FileClose,
+    FileDataChange,
+    FileDataRead,
+    FileDataWrite,
+    ProcessOpen,
+
+    Last
+};
+
+
+// Common header for all events
+typedef struct _EVENT_HEADER {
+    ULONG  RawEventId;
+    LONGLONG TickTime;
+    kEventType  EventType;  // EVENT_TYPE_PROCESS, EVENT_TYPE_REGISTRY, etc.
+    ULONG ProcessId;
+} EVENT_HEADER, * PEVENT_HEADER;
+
+// Process Event
+typedef struct _PROCESS_EVENT {
+    EVENT_HEADER Header;
+    ULONG  ProcessParentPid;
+    ULONG  ProcessCreatorPid;
+    WCHAR  ProcessCmdLine[512];
+    WCHAR  ProcessImageFile[260];
+    WCHAR  ProcessUserSid[128];
+    BOOLEAN ProcessIsElevated;
+    ULONG  ProcessElevationType;  // TOKEN_ELEVATION_TYPE
+    LONGLONG ProcessCreationTime;
+    LONGLONG ProcessDeletionTime;
+    LONG   ProcessExitCode;
+} PROCESS_EVENT, * PPROCESS_EVENT;
+
+// Registry Event
+typedef struct _REGISTRY_EVENT {
+    EVENT_HEADER Header;
+    WCHAR  RegistryPath[512];
+    WCHAR  RegistryKeyNewName[256];
+    WCHAR  RegistryName[256];
+    ULONG  RegistryDataType;
+    ULONG  RegistryDataSize;
+    UCHAR  RegistryRawData[1024];  // Variable size in practice
+} REGISTRY_EVENT, * PREGISTRY_EVENT;
+
+// File Event
+typedef struct _FILE_EVENT {
+    EVENT_HEADER Header;
+    WCHAR  FilePath[512];
+    WCHAR  FileVolumeGuid[40];
+    WCHAR  FileVolumeType[EVENT_TYPE_WCHAR_LENGTH];
+    WCHAR  FileVolumeDevice[256];
+    CHAR  FileRawHash[65];  // SHA256 as hex string
+} FILE_EVENT, * PFILE_EVENT;
+
+
+// Process Access Event
+typedef struct _PROCESS_ACCESS_EVENT {
+    EVENT_HEADER Header;
+    ULONG  TargetProcessPid;
+    ULONG  AccessMask;
+} PROCESS_ACCESS_EVENT, * PPROCESS_ACCESS_EVENT;
 
 // Device type
 #define FILE_DEVICE_EDR   0x8000

@@ -12,3 +12,6 @@ KDeviceIoControl(
 	PVOID pOutputBuffer,
 	ULONG OutputBufferLength
 );
+
+LARGE_INTEGER
+GetCurrentTimeStamp();

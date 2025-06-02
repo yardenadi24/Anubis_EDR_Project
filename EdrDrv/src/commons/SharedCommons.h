@@ -30,15 +30,17 @@ enum class kEventType
     FileDataRead,
     FileDataWrite,
     ProcessOpen,
+    NetworkConnect,
+    NetworkDns,
+    NetworkHttp,
 
     Last
 };
 
-
 // Common header for all events
 typedef struct _EVENT_HEADER {
     ULONG  RawEventId;
-    LONGLONG TickTime;
+    LARGE_INTEGER TimeStamp;
     kEventType  EventType;  // EVENT_TYPE_PROCESS, EVENT_TYPE_REGISTRY, etc.
     ULONG ProcessId;
 } EVENT_HEADER, * PEVENT_HEADER;
@@ -53,8 +55,8 @@ typedef struct _PROCESS_EVENT {
     WCHAR  ProcessUserSid[128];
     BOOLEAN ProcessIsElevated;
     ULONG  ProcessElevationType;  // TOKEN_ELEVATION_TYPE
-    LONGLONG ProcessCreationTime;
-    LONGLONG ProcessDeletionTime;
+    LARGE_INTEGER ProcessCreationTime;
+    LARGE_INTEGER ProcessDeletionTime;
     LONG   ProcessExitCode;
 } PROCESS_EVENT, * PPROCESS_EVENT;
 

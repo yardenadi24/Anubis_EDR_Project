@@ -9,11 +9,12 @@
 #include "..\utils\kDiskUtils.h"
 
 
-PFLT_FILTER g_pFilter = NULL;
-BOOLEAN g_Monitor = FALSE;
-BOOLEAN g_PortInitialized = FALSE;
-PFLT_PORT g_pServerPort; // Filter server port 
-PFLT_PORT g_pClientPort; // Filter client port 
+static PFLT_FILTER g_pFilter = NULL;
+static BOOLEAN g_Monitor = FALSE;
+static BOOLEAN g_PortInitialized = FALSE;
+static PFLT_PORT g_pServerPort; // Filter server port 
+static PFLT_PORT g_pClientPort; // Filter client port 
+static CONNECTION_CONTEXT g_ConnectionContext = { 0 };
 
 //////////////////////////
 // Operation callbacks
@@ -815,18 +816,27 @@ FLT_POSTOP_CALLBACK_STATUS
 	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
 	__try
 	{
-		NTSTATUS Status = FltGetStreamContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
+		NTSTATUS Status = FltGetStreamContext(
+			pFltObjects->Instance,
+			pFltObjects->FileObject,
+			(PFLT_CONTEXT*)&pStreamHandleCtx);
+
 		if (!NT_SUCCESS(Status) || pStreamHandleCtx == NULL)
 		{
 			return FLT_POSTOP_FINISHED_PROCESSING;
 		}
 
 		//TODO:: LOG
-
+		
+		auto& Info = pStreamHandleCtx->SequenceWriteInfo;
+		
 		// If any bytes was written
-		if (NT_SUCCESS(pData->IoStatus.Status))
+		if (NT_SUCCESS(pData->IoStatus.Status) &&
+			pData->IoStatus.Information > 0)
 		{
 			pStreamHandleCtx->fDirty = TRUE;
+			Info.fEnabled = TRUE;
+
 			// Disable detect sequence read
 			pStreamHandleCtx->SequenceReadInfo.fEnabled = FALSE;
 		}
@@ -834,7 +844,6 @@ FLT_POSTOP_CALLBACK_STATUS
 		// Sequence action detection
 		do
 		{
-			auto& Info = pStreamHandleCtx->SequenceWriteInfo;
 
 			if (!Info.fEnabled)
 				break;
@@ -847,8 +856,30 @@ FLT_POSTOP_CALLBACK_STATUS
 			}
 
 
-			// TODO:: Write operation we should update the file hash
+			LARGE_INTEGER WriteOffset = pData->Iopb->Parameters.Write.ByteOffset;
+			UINT64 ActualWritePos;
 
+			if (WriteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
+				WriteOffset.HighPart == -1)
+			{
+				// Using current file position
+				ActualWritePos = pFltObjects->FileObject->CurrentByteOffset.QuadPart;
+			}
+			else {
+				// Explicit position specified
+				ActualWritePos = WriteOffset.QuadPart;
+			}
+
+			// Sequential write - now we need to extract the data and update hash
+			SIZE_T DataSize = pData->IoStatus.Information;
+
+			Status = Info.UpdateHashIoOperation(pData, SEQUENCE_TYPE::WRITE);
+			
+			if (!NT_SUCCESS(Status))
+			{
+				// Failed update hash
+				// LOG
+			}
 
 		} while (FALSE);
 
@@ -913,6 +944,7 @@ PreRead(
 		// check read position
 		if (nReadPos != info.nNextPos)
 		{
+			// Not a sequence anymore
 			info.fEnabled = FALSE;
 			break;
 		}
@@ -960,7 +992,12 @@ PostRead(
 				Info.fEnabled = FALSE;
 			}
 
-			// TODO::Update Hash
+			Status = Info.UpdateHashIoOperation(pData, SEQUENCE_TYPE::READ);
+
+			if (!NT_SUCCESS(Status))
+			{
+				// LOG fail
+			}
 
 		} while (FALSE);
 
@@ -985,7 +1022,7 @@ SendFileEventNoResponse(
 	PINSTANCE_CONTEXT pInstCtx = pStreamHandleCtx->pInstCtx;
 
 	kFileEvent.Header.EventType = EventType;
-	kFileEvent.Header.TickTime = getTickCount64();
+	kFileEvent.Header.TimeStamp = GetCurrentTimeStamp();
 	kFileEvent.Header.ProcessId = pStreamHandleCtx->nOpeningProcessId;
 
 	RtlCopyMemory(kFileEvent.FilePath, pStreamHandleCtx->pNameInfo->Name.Buffer, pStreamHandleCtx->pNameInfo->Name.Length);
@@ -995,11 +1032,13 @@ SendFileEventNoResponse(
 	if (pInstCtx->usDeviceName.Length != 0)
 		RtlCopyMemory(kFileEvent.FileVolumeDevice, pInstCtx->usDeviceName.Buffer, pInstCtx->usDeviceName.Length);
 
-	if (EventType == kEventType::FileDataRead && pStreamHandleCtx->SequenceReadInfo.fEnabled)
-		BytesToHexString(pStreamHandleCtx->SequenceReadInfo.HashedData, 32, kFileEvent.FileRawHash);
+	auto& Info = kEventType::FileDataRead == EventType ? pStreamHandleCtx->SequenceReadInfo : pStreamHandleCtx->SequenceWriteInfo;
+	BOOLEAN Enabled = Info.fEnabled;
 
-	if (EventType == kEventType::FileDataWrite && pStreamHandleCtx->SequenceWriteInfo.fEnabled)
-		BytesToHexString(pStreamHandleCtx->SequenceWriteInfo.HashedData, 32, kFileEvent.FileRawHash);
+	// Copy the hex hash that the proces red/wrote
+	if (Enabled && Info.fHashFinalized)
+		RtlCopyMemory(kFileEvent.FileRawHash, Info.FinalHexHash, sizeof(Info.FinalHexHash));
+
 
 	// TODO:: Change to use queue and workers
 	LARGE_INTEGER Timeout = {};
@@ -1015,39 +1054,12 @@ SendFileEventNoResponse(
 	return Status;
 }
 
-NTSTATUS
-UpdateHash(
-	PSTREAM_HANDLE_CONTEXT pStreamHandleCtx,
-	PFLT_CALLBACK_DATA pData,
-	kEventType EventType /*Operation Read or Write*/
-)
+NTSTATUS unloadFilter(_In_ FLT_FILTER_UNLOAD_FLAGS /*Flags*/)
 {
-	auto& ReadParams = pData->Iopb->Parameters.Read;
-	auto& WriteParams = pData->Iopb->Parameters.Write;
+	DbgPrint("%s: Entered\r\n", __FUNCTION__);
 
-	SEQUENCE_ACTION& ActionInfo = EventType == kEventType::FileDataRead ? pStreamHandleCtx->SequenceReadInfo : pStreamHandleCtx->SequenceWriteInfo;
-
-	SIZE_T DataSize = pData->IoStatus.Information;
-
-	PMDL pHeadMdl = (EventType == kEventType::FileDataRead) ? ReadParams.MdlAddress : WriteParams.MdlAddress;
-
-
-	// Direct IO
-	if (pHeadMdl != NULL)
-	{
-		SIZE_T RestDataSize = DataSize;
-		for (PMDL pCurrMdl = pHeadMdl; pCurrMdl != NULL && RestDataSize != 0; pCurrMdl = pCurrMdl->Next)
-		{
-			PVOID pDataBuffer = MmGetSystemAddressForMdlSafe(pCurrMdl, NormalPagePriority | MdlMappingNoExecute);
-			if (pDataBuffer == NULL)
-			{
-				return STATUS_INVALID_PARAMETER_3;
-			}
-
-			SIZE_T nCurrMdlDataSize = min(MmGetMdlByteCount(pCurrMdl), RestDataSize);
-
-		}
-	}
+	Finalize();
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS GetDiskPdoName(PDEVICE_OBJECT pVolumeDeviceObject, UNICODE_STRING* pDst,
@@ -1278,4 +1290,153 @@ DebugPrintAccessMask(ACCESS_MASK access)
 	if (access & FILE_READ_DATA) DbgPrint("  FILE_READ_DATA\n");
 	if (access & FILE_WRITE_DATA) DbgPrint("  FILE_WRITE_DATA\n");
 	if (access & FILE_EXECUTE) DbgPrint("  FILE_EXECUTE\n");
+}
+
+// Communication port callbacks
+NTSTATUS FLTAPI
+FilterConnectNotify(
+	_In_ PFLT_PORT ClientPort,
+	_In_opt_ PVOID ServerPortCookie,
+	_In_reads_bytes_opt_(SizeOfContext) PVOID ConnectionContext,
+	_In_ ULONG SizeOfContext,
+	_Outptr_result_maybenull_ PVOID* ConnectionPortCookie
+)
+{
+	UNREFERENCED_PARAMETER(ServerPortCookie);
+	UNREFERENCED_PARAMETER(ConnectionContext);
+	UNREFERENCED_PARAMETER(SizeOfContext);
+	
+	// TODO:: Secure connection
+
+	ULONG processId = (ULONG)(ULONG_PTR)PsGetCurrentProcessId();
+	DbgInfo("User-mode client connecting from PID: %lu", processId);
+
+	// Check if we already have a connection
+	if (g_ConnectionContext.IsConnected) {
+		DbgError("Connection rejected - already connected to PID: %lu",
+			g_ConnectionContext.ProcessId);
+		return STATUS_ALREADY_COMMITTED;
+	}
+
+	// Store the client port for sending messages
+	g_pClientPort = ClientPort;
+	// Update connection context
+	g_ConnectionContext.ProcessId = processId;
+	g_ConnectionContext.IsConnected = TRUE;
+
+	// Set connection cookie to our context
+	*ConnectionPortCookie = &g_ConnectionContext;
+
+	DbgInfo("User-mode client connected successfully");
+	return STATUS_SUCCESS;
+}
+
+VOID FLTAPI
+FilterDisconnectNotify(
+	_In_opt_ PVOID ConnectionCookie
+)
+{
+	PCONNECTION_CONTEXT context = (PCONNECTION_CONTEXT)ConnectionCookie;
+	if (context && context->IsConnected)
+	{
+		DbgInfo("User-mode client disconnecting from PID: %lu", context->ProcessId);
+
+		g_pClientPort = NULL;
+		context->IsConnected = FALSE;
+		context->ProcessId = 0;
+
+		DbgInfo("User-mode client disconnected");
+	}
+}
+
+NTSTATUS FLTAPI
+FilterMessageNotify(
+	_In_opt_ PVOID PortCookie,
+	_In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
+	_In_ ULONG InputBufferLength,
+	_Out_writes_bytes_to_opt_(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer,
+	_In_ ULONG OutputBufferLength,
+	_Out_ PULONG ReturnOutputBufferLength
+)
+{
+	UNREFERENCED_PARAMETER(PortCookie);
+
+	// This handles incoming "phone calls" from user mode
+	*ReturnOutputBufferLength = 0;
+
+	// Basic validation
+	if (InputBuffer == NULL || InputBufferLength == 0) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+
+}
+
+// Port management
+NTSTATUS
+InitializeCommunicationPort()
+{
+	NTSTATUS Status;
+	UNICODE_STRING PortName;
+	PSECURITY_DESCRIPTOR pSd = NULL;
+	OBJECT_ATTRIBUTES ObjAtr;
+
+	RtlInitUnicodeString(&PortName, FILTER_PORT_NAME);
+
+	// Create a security descriptor that allows the user-mode agent to connect
+	// This is like setting up access permissions for who can use this phone line
+	Status = FltBuildDefaultSecurityDescriptor(
+		&pSd,
+		FLT_PORT_ALL_ACCESS
+	);
+
+	if(!NT_SUCCESS(Status))
+	{
+		return Status;
+	}
+
+	InitializeObjectAttributes(
+		&ObjAtr,
+		&PortName,
+		OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+		NULL,
+		pSd
+	);
+
+	Status = FltCreateCommunicationPort(
+		g_pFilter,
+		&g_pServerPort,
+		&ObjAtr,
+		NULL,
+		FilterConnectNotify,
+		FilterDisconnectNotify,
+		FilterMessageNotify,
+		MAX_CONNECTIONS
+	);
+
+	FltFreeSecurityDescriptor(pSd);
+
+	if (!NT_SUCCESS(Status))
+	{
+		DbgInfo("Failed creating port");
+		return Status;
+	}
+
+	DbgInfo("Communication port created successfully");
+	return Status;
+}
+
+VOID
+CleanupCommunicationPort()
+{
+	// Close the server port - this disconnects the phone line
+	if (g_pServerPort != NULL) {
+		FltCloseCommunicationPort(g_pServerPort);
+		g_pServerPort = NULL;
+	}
+
+	// Clear connection context
+	RtlZeroMemory(&g_ConnectionContext, sizeof(g_ConnectionContext));
+
+	DbgInfo("Communication port cleaned up");
 }

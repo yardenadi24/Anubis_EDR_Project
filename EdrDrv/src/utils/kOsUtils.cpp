@@ -60,3 +60,11 @@ KDeviceIoControl(
 
 	return IoStatusBlock.Status;
 }
+
+LARGE_INTEGER
+GetCurrentTimeStamp()
+{
+	LARGE_INTEGER ts;
+	KeQuerySystemTimePrecise(&ts);
+	return ts;
+}

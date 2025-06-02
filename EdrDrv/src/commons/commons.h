@@ -3,6 +3,8 @@
 #include <fltKernel.h>
 #include "SharedCommons.h"
 
+static PDEVICE_OBJECT g_pDeviceObject;
+
 #define DRIVER_PREFIX "Anubis_Driver: "
 
 #define EDR_MEMORY_TAG 'sbnA'
@@ -21,3 +23,6 @@
 
 // Unknown unicode string
 STATIC_UNICODE_STRING(cUnkownUnicodeString, L"UNKNOWN");
+
+
+// Event types

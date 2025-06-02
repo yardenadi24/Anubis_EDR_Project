@@ -1061,87 +1061,32 @@ VOID NTAPI NetworkStreamClassifyFn(
 		].value.uint32;
 	}
 
+	PNETWORK_EVENT_QUEUE_ITEM queueItem =
+		(PNETWORK_EVENT_QUEUE_ITEM)ExAllocatePoolWithTag(
+			NonPagedPool,
+			sizeof(NETWORK_EVENT_QUEUE_ITEM),
+			EDR_MEMORY_TAG
+		);
+	BOOLEAN fIsHttpPort = (IsHttpPort(remotePort) || IsHttpPort(localPort));
+
 	// Check if this is HTTP/HTTPS traffic
-	if (IsHttpPort(remotePort) || IsHttpPort(localPort))
+	if (fIsHttpPort)
 	{
-		FWPS_STREAM_DATA* streamData = streamPacket->streamData;
-		SIZE_T dataLength = streamData->dataLength;
+		queueItem->Event.HttpEvent.RemoteIp = remoteIp;
+		queueItem->Event.HttpEvent.RemotePort = remotePort;
+		queueItem->Event.HttpEvent.IsHttps = (remotePort == 443);
+		queueItem->Event.HttpEvent.Header.ProcessId =
+			(ULONG)inMetaValues->processId;
 
-		// Reasonable size check for HTTP headers (typically < 8KB)
-		if (dataLength > 0 && dataLength < 8192)
-		{
-			// Allocate buffer for stream data
-			PVOID data = ExAllocatePoolWithTag(
-				NonPagedPool,
-				dataLength + 1,  // +1 for null terminator
-				EDR_MEMORY_TAG
-			);
+		// TODO:: Parse relevant data
+	}
 
-			if (data)
-			{
-				// Copy stream data to our buffer
-				SIZE_T bytesCopied = 0;
-				FwpsCopyStreamDataToBuffer(
-					streamData,
-					data,
-					dataLength,
-					&bytesCopied
-				);
-
-				// Null terminate for string operations
-				((PCHAR)data)[bytesCopied] = '\0';
-
-				// Check for method
-				if (bytesCopied >= 4) {
-					if (RtlCompareMemory(data, "GET ", 4) == 4 ||
-						RtlCompareMemory(data, "POST ", 5) == 5 ||
-						RtlCompareMemory(data, "PUT ", 4) == 4 ||
-						RtlCompareMemory(data, "HEAD ", 5) == 5 ||
-						RtlCompareMemory(data, "DELETE ", 7) == 7)
-					{
-						// This is an HTTP request - parse it
-						PNETWORK_EVENT_QUEUE_ITEM queueItem =
-							(PNETWORK_EVENT_QUEUE_ITEM)ExAllocatePoolWithTag(
-								NonPagedPool,
-								sizeof(NETWORK_EVENT_QUEUE_ITEM),
-								EDR_MEMORY_TAG
-							);
-
-						if (queueItem)
-						{
-							// Parse HTTP request
-							if (NT_SUCCESS(ParseHttpRequest(
-								data,
-								(UINT32)bytesCopied,
-								&queueItem->Event.HttpEvent)))
-							{
-								queueItem->Event.HttpEvent.RemoteIp = remoteIp;
-								queueItem->Event.HttpEvent.RemotePort = remotePort;
-								queueItem->Event.HttpEvent.IsHttps = (remotePort == 443);
-								queueItem->Event.HttpEvent.Header.ProcessId =
-									(ULONG)inMetaValues->processId;
-
-								// Queue the event
-								if (!NT_SUCCESS(QueueNetworkEvent(queueItem))) {
-									ExFreePoolWithTag(queueItem, EDR_MEMORY_TAG);
-								}
-								else {
-									InterlockedIncrement64(&g_NetworkMonitor->HttpRequests);
-								}
-							}
-							else {
-								ExFreePoolWithTag(queueItem, EDR_MEMORY_TAG);
-							}
-						}
-					}
-					else if (RtlCompareMemory(data, "HTTP/", 5) == 5) {
-						// This is an HTTP response
-						// TODO: Parse response for status codes, content-type, etc.
-					}
-				}
-				ExFreePoolWithTag(data, EDR_MEMORY_TAG);
-			}
-		}
+	// Queue the event
+	if (!NT_SUCCESS(QueueNetworkEvent(queueItem))) {
+		ExFreePoolWithTag(queueItem, EDR_MEMORY_TAG);
+	}
+	else if(fIsHttpPort){
+		InterlockedIncrement64(&g_NetworkMonitor->HttpRequests);
 	}
 
 	// Update statistics
@@ -1212,121 +1157,40 @@ VOID NTAPI NetworkDatagramClassifyFn(
 		].value.uint32;
 	}
 
-	// Check if this is DNS traffic
-	if (IsDnsPort(localPort) || IsDnsPort(remotePort))
-	{
-		// Get the first NET_BUFFER from the list
-		NET_BUFFER* netBuffer = NET_BUFFER_LIST_FIRST_NB(netBufferList);
-		if (netBuffer)
-		{
-			UINT32 dataLength = NET_BUFFER_DATA_LENGTH(netBuffer);
+	// Create DNS event
+	PNETWORK_EVENT_QUEUE_ITEM queueItem =
+		(PNETWORK_EVENT_QUEUE_ITEM)ExAllocatePoolWithTag(
+			NonPagedPool,
+			sizeof(NETWORK_EVENT_QUEUE_ITEM),
+			EDR_MEMORY_TAG
+		);
 
-			// DNS packets are typically small (< 512 bytes for standard queries)
-			if (dataLength >= sizeof(DNS_HEADER) && dataLength < 1024)
-			{
-				// Allocate buffer for packet data
-				PVOID data = ExAllocatePoolWithTag(
-					NonPagedPool,
-					dataLength,
-					EDR_MEMORY_TAG
-				);
+		RtlZeroMemory(queueItem, sizeof(NETWORK_EVENT_QUEUE_ITEM));
+		queueItem->EventType = kEventType::NetworkDns;
 
-				if (data)
-				{
-					// Copy packet data to our buffer
-					PVOID dataBuffer = NdisGetDataBuffer(
-						netBuffer,
-						dataLength,
-						data,
-						1,      // AlignMultiple
-						0       // AlignOffset
-					);
+		// Fill additional information
+		queueItem->Event.DnsEvent.Header.ProcessId =
+			(ULONG)inMetaValues->processId;
+		queueItem->Event.DnsEvent.DnsServerIp = remoteIp;
+		queueItem->Event.DnsEvent.IsIpv6 = FALSE;
 
-					if (dataBuffer)
-					{
-						// Create DNS event
-						PNETWORK_EVENT_QUEUE_ITEM queueItem =
-							(PNETWORK_EVENT_QUEUE_ITEM)ExAllocatePoolWithTag(
-								NonPagedPool,
-								sizeof(NETWORK_EVENT_QUEUE_ITEM),
-								EDR_MEMORY_TAG
-							);
+		BOOLEAN fIsDnsPort = (IsDnsPort(localPort) || IsDnsPort(remotePort));
 
-						if (queueItem)
-						{
-							RtlZeroMemory(queueItem, sizeof(NETWORK_EVENT_QUEUE_ITEM));
-							queueItem->EventType = kEventType::NetworkDns;
-
-							// Parse DNS packet
-							if (NT_SUCCESS(ParseDnsPacket(
-								dataBuffer,
-								dataLength,
-								&queueItem->Event.DnsEvent)))
-							{
-								// Fill additional information
-								queueItem->Event.DnsEvent.Header.ProcessId =
-									(ULONG)inMetaValues->processId;
-								queueItem->Event.DnsEvent.DnsServerIp = remoteIp;
-								queueItem->Event.DnsEvent.IsIpv6 = FALSE;
-
-								// Check for suspicious domains
-								BOOLEAN shouldBlock = FALSE;
-
-								// Check 1: DGA detection
-								if (IsSuspiciousDomain(queueItem->Event.DnsEvent.DomainName)) {
-									DbgInfo("Suspicious DGA-like domain: %ws",
-										queueItem->Event.DnsEvent.DomainName);
-									shouldBlock = TRUE;
-								}
-
-								// Check 2: DNS tunneling detection (long domains)
-								SIZE_T domainLen = wcslen(queueItem->Event.DnsEvent.DomainName);
-								if (domainLen > 50) {  // Unusually long domain
-									DbgInfo("Possible DNS tunneling - long domain: %ws",
-										queueItem->Event.DnsEvent.DomainName);
-									shouldBlock = TRUE;
-								}
-
-								// Check 3: TXT record queries (often used for C2)
-								if (queueItem->Event.DnsEvent.QueryType == DnsQueryType::TXT) {
-									DbgInfo("DNS TXT query detected: %ws",
-										queueItem->Event.DnsEvent.DomainName);
-									// Don't block TXT queries by default, but log them
-								}
-
-								// Set block status
-								queueItem->Event.DnsEvent.IsBlocked = shouldBlock;
-
-								if (shouldBlock) {
-									// Block the DNS query
-									classifyOut->actionType = FWP_ACTION_BLOCK;
-									classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-
-									DbgInfo("Blocked DNS query to: %ws",
-										queueItem->Event.DnsEvent.DomainName);
-								}
-
-								if (!NT_SUCCESS(QueueNetworkEvent(queueItem))) {
-									ExFreePoolWithTag(queueItem, EDR_MEMORY_TAG);
-								}
-								else {
-									InterlockedIncrement64(&g_NetworkMonitor->DnsQueries);
-								}
-							}
-						}
-						ExFreePoolWithTag(data, EDR_MEMORY_TAG);
-					}
-				}
-			}
+		if (!NT_SUCCESS(QueueNetworkEvent(queueItem))) {
+			ExFreePoolWithTag(queueItem, EDR_MEMORY_TAG);
 		}
+		else if(fIsDnsPort){
+			InterlockedIncrement64(&g_NetworkMonitor->DnsQueries);
+		}
+	
 		// Update statistics
 		InterlockedIncrement64(&g_NetworkMonitor->TotalPackets);
+
 		// Continue processing if not blocked
 		if (classifyOut->actionType != FWP_ACTION_BLOCK) {
 			classifyOut->actionType = FWP_ACTION_CONTINUE;
 		}
-	}
-
+	
 }
 
 // =============================================================================
@@ -1335,7 +1199,7 @@ VOID NTAPI NetworkDatagramClassifyFn(
 
 
 /*
- * ParseDnsPacket
+ * TODO:: ParseDnsPacket -> https://datatracker.ietf.org/doc/html/rfc1035
  *
  * Extract DNS query information from raw packet
  * Handles DNS name compression and multiple labels
@@ -1346,102 +1210,14 @@ NTSTATUS ParseDnsPacket(
 	_Out_ PDNS_EVENT DnsEvent
 )
 {
-	if (DataLength < sizeof(DNS_HEADER)) {
-		return STATUS_BUFFER_TOO_SMALL;
-	}
-
-	PDNS_HEADER dnsHeader = (PDNS_HEADER)PacketData;
-	PUCHAR queryStart = (PUCHAR)PacketData + sizeof(DNS_HEADER);
-	PUCHAR queryEnd = (PUCHAR)PacketData + DataLength;
-
-	// Initialize event
-	RtlZeroMemory(DnsEvent, sizeof(DNS_EVENT));
-	DnsEvent->Header.EventType = kEventType::NetworkDns;
-	DnsEvent->Header.TimeStamp = GetCurrentTimeStamp();
-
-	// Network byte order conversion
-	DnsEvent->QueryId = RtlUshortByteSwap(dnsHeader->TransactionId);
-
-	// Parse DNS flags
-	UINT16 flags = RtlUshortByteSwap(dnsHeader->Flags);
-	BOOLEAN isResponse = (flags & 0x8000) ? TRUE : FALSE;
-
-	// Parse domain name from query section
-	PUCHAR p = queryStart;
-	WCHAR domainName[256] = { 0 };
-	SIZE_T domainIndex = 0;
-
-	while (p < queryEnd && *p != 0 && domainIndex < 255)
-	{
-		UCHAR labelLength = *p++;
-
-		// Check for compression pointer (starts with 0xC0)
-		if ((labelLength & 0xC0) == 0xC0) {
-			// DNS compression not handled in this simple parser
-			// Would need to follow pointer to decompress
-			break;
-		}
-
-		if (p + labelLength > queryEnd) {
-			return STATUS_BUFFER_TOO_SMALL;
-		}
-
-		// Add dot separator between labels (except first)
-		if (domainIndex > 0 && domainIndex < 255) {
-			domainName[domainIndex++] = L'.';
-		}
-
-		// Copy label characters
-		for (UCHAR i = 0; i < labelLength && domainIndex < 255; i++) {
-			// Convert ASCII to Unicode
-			domainName[domainIndex++] = (WCHAR)p[i];
-		}
-
-		p += labelLength;
-	}
-
-	// Skip null terminator
-	if (p < queryEnd && *p == 0) {
-		p++;
-	}
-
-	// Get query type and class (if we have room)
-	if (p + 4 <= queryEnd) {
-		UINT16 queryType = RtlUshortByteSwap(*(PUINT16)p);
-		DnsEvent->QueryType = (DnsQueryType)queryType;
-		p += 2;
-
-		UINT16 queryClass = RtlUshortByteSwap(*(PUINT16)p);
-		p += 2;
-		// queryClass should be 1 (IN - Internet) for normal queries
-	}
-
-	// Copy domain name to event
-	RtlStringCbCopyW(DnsEvent->DomainName, sizeof(DnsEvent->DomainName), domainName);
-
-
-	if (isResponse)
-	{
-		DnsEvent->ResponseCode = flags & 0x000F;  // RCODE in lower 4 bits
-
-		// Parse answer section if present
-		UINT16 answerCount = RtlUshortByteSwap(dnsHeader->AnswerRRs);
-		if (answerCount > 0 && p < queryEnd) {
-			// Simple indication that we got answers
-			// Full parsing would extract the IP addresses
-			RtlStringCbCopyW(
-				DnsEvent->ResolvedAddresses,
-				sizeof(DnsEvent->ResolvedAddresses),
-				L"<answers present>"
-			);
-		}
-	}
-
+	UNREFERENCED_PARAMETER(PacketData);
+	UNREFERENCED_PARAMETER(DataLength);
+	UNREFERENCED_PARAMETER(DnsEvent);
 	return STATUS_SUCCESS;
 }
 
 /*
-*ParseHttpRequest
+*TODO::ParseHttpRequest -> https://datatracker.ietf.org/doc/html/rfc2616
 *
 * Extract HTTP request information from TCP stream
 * Parses method, URL, host, and other headers
@@ -1452,141 +1228,9 @@ NTSTATUS ParseHttpRequest(
 	_Out_ PHTTP_EVENT HttpEvent
 )
 {
-	PCHAR data = (PCHAR)StreamData;
-	PCHAR dataEnd = data + DataLength;
-	PCHAR line = data;
-	PCHAR lineEnd;
-
-	// Initialize event
-	RtlZeroMemory(HttpEvent, sizeof(HTTP_EVENT));
-	HttpEvent->Header.EventType = kEventType::NetworkHttp;
-	HttpEvent->Header.TimeStamp = GetCurrentTimeStamp();
-
-	// Find end of first line (request line)
-	lineEnd = (PCHAR)RtlFindCharInString(line, '\r', dataEnd - line);
-	if (!lineEnd || lineEnd >= dataEnd - 1 || lineEnd[1] != '\n') {
-		return STATUS_INVALID_PARAMETER;
-	}
-
-	// Parse request line: "METHOD URL HTTP/x.x"
-	PCHAR space1 = (PCHAR)RtlFindCharInString(line, ' ', lineEnd - line);
-	if (!space1) {
-		return STATUS_INVALID_PARAMETER;
-	}
-
-	// Extract method
-	SIZE_T methodLen = min(space1 - line, 15);
-	ANSI_STRING ansiMethod;
-	ansiMethod.Buffer = line;
-	ansiMethod.Length = (USHORT)methodLen;
-	ansiMethod.MaximumLength = (USHORT)methodLen;
-
-	UNICODE_STRING unicodeMethod;
-	unicodeMethod.Buffer = HttpEvent->Method;
-	unicodeMethod.MaximumLength = sizeof(HttpEvent->Method);
-
-	RtlAnsiStringToUnicodeString(&unicodeMethod, &ansiMethod, FALSE);
-
-	// Extract URL
-	line = space1 + 1;
-	PCHAR space2 = (PCHAR)RtlFindCharInString(line, ' ', lineEnd - line);
-	if (space2) {
-		SIZE_T urlLen = min(space2 - line, 511);
-		ANSI_STRING ansiUrl;
-		ansiUrl.Buffer = line;
-		ansiUrl.Length = (USHORT)urlLen;
-		ansiUrl.MaximumLength = (USHORT)urlLen;
-
-		UNICODE_STRING unicodeUrl;
-		unicodeUrl.Buffer = HttpEvent->Url;
-		unicodeUrl.MaximumLength = sizeof(HttpEvent->Url);
-
-		RtlAnsiStringToUnicodeString(&unicodeUrl, &ansiUrl, FALSE);
-	}
-
-	// Move to headers (skip \r\n)
-	line = lineEnd + 2;
-
-	// Parse headers until we hit empty line or end of data
-	while (line < dataEnd && *line != '\r') {
-		// Find end of this header line
-		lineEnd = (PCHAR)RtlFindCharInString(line, '\r', dataEnd - line);
-		if (!lineEnd) break;
-
-		// Look for specific headers
-
-		// Host header
-		if (RtlCompareMemory(line, "Host: ", 6) == 6) {
-			SIZE_T hostLen = min(lineEnd - line - 6, 255);
-			ANSI_STRING ansiHost;
-			ansiHost.Buffer = line + 6;
-			ansiHost.Length = (USHORT)hostLen;
-			ansiHost.MaximumLength = (USHORT)hostLen;
-
-			UNICODE_STRING unicodeHost;
-			unicodeHost.Buffer = HttpEvent->Host;
-			unicodeHost.MaximumLength = sizeof(HttpEvent->Host);
-
-			RtlAnsiStringToUnicodeString(&unicodeHost, &ansiHost, FALSE);
-		}
-		// User-Agent header
-		else if (RtlCompareMemory(line, "User-Agent: ", 12) == 12) {
-			SIZE_T uaLen = min(lineEnd - line - 12, 255);
-			ANSI_STRING ansiUA;
-			ansiUA.Buffer = line + 12;
-			ansiUA.Length = (USHORT)uaLen;
-			ansiUA.MaximumLength = (USHORT)uaLen;
-
-			UNICODE_STRING unicodeUA;
-			unicodeUA.Buffer = HttpEvent->UserAgent;
-			unicodeUA.MaximumLength = sizeof(HttpEvent->UserAgent);
-
-			RtlAnsiStringToUnicodeString(&unicodeUA, &ansiUA, FALSE);
-		}
-		// Referer header
-		else if (RtlCompareMemory(line, "Referer: ", 9) == 9) {
-			SIZE_T refLen = min(lineEnd - line - 9, 255);
-			ANSI_STRING ansiRef;
-			ansiRef.Buffer = line + 9;
-			ansiRef.Length = (USHORT)refLen;
-			ansiRef.MaximumLength = (USHORT)refLen;
-
-			UNICODE_STRING unicodeRef;
-			unicodeRef.Buffer = HttpEvent->Referer;
-			unicodeRef.MaximumLength = sizeof(HttpEvent->Referer);
-
-			RtlAnsiStringToUnicodeString(&unicodeRef, &ansiRef, FALSE);
-		}
-		// Content-Length header
-		else if (RtlCompareMemory(line, "Content-Length: ", 16) == 16) {
-			// Parse numeric value
-			PCHAR numStart = line + 16;
-			ULONG contentLength = 0;
-			while (numStart < lineEnd && *numStart >= '0' && *numStart <= '9') {
-				contentLength = contentLength * 10 + (*numStart - '0');
-				numStart++;
-			}
-			HttpEvent->ContentLength = contentLength;
-		}
-		// Content-Type header
-		else if (RtlCompareMemory(line, "Content-Type: ", 14) == 14) {
-			SIZE_T ctLen = min(lineEnd - line - 14, 127);
-			ANSI_STRING ansiCT;
-			ansiCT.Buffer = line + 14;
-			ansiCT.Length = (USHORT)ctLen;
-			ansiCT.MaximumLength = (USHORT)ctLen;
-
-			UNICODE_STRING unicodeCT;
-			unicodeCT.Buffer = HttpEvent->ContentType;
-			unicodeCT.MaximumLength = sizeof(HttpEvent->ContentType);
-
-			RtlAnsiStringToUnicodeString(&unicodeCT, &ansiCT, FALSE);
-		}
-
-		// Move to next line
-		line = lineEnd + 2;  // Skip \r\n
-	}
-
+	UNREFERENCED_PARAMETER(StreamData);
+	UNREFERENCED_PARAMETER(DataLength);
+	UNREFERENCED_PARAMETER(HttpEvent);
 	return STATUS_SUCCESS;
 }
 

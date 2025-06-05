@@ -15,6 +15,14 @@
 #define FILTER_PORT_NAME L"\\AnubisFileMonitorPort"
 #define MAX_CONNECTIONS 1  // Only allow one user-mode connection
 
+static LIST_ENTRY g_FileEventQueue;
+static KSPIN_LOCK g_FileQueueLock;
+static KIRQL g_FileQueueOldIrql;
+static LONG g_QueuedEventCount = 0;
+static BOOLEAN g_FileMonitorInitialized = FALSE;
+
+#define MAX_FILE_EVENTS 10000  // Maximum queued events
+
 static constexpr USHORT c_MinSectorSize = 0x200;
 static constexpr UINT64 c_nUnknownFileSize = (UINT64)-1;
 constexpr UINT32 c_nSendMsgTimeout = 2 /*sec*/ * 1000 /*ms*/;

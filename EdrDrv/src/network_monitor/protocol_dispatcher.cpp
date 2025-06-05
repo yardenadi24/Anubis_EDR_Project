@@ -4,10 +4,19 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // Helper to convert safe ASCII string
-static void LogString(const char* label, const char* start, size_t maxLen) {
+static void LogString(
+    const char* label,
+    const char* start,
+    size_t maxLen) 
+{
     char buffer[256] = { 0 };
     size_t len = MIN(maxLen, sizeof(buffer) - 1);
-    for (size_t i = 0; i < len && start[i] != '\r' && start[i] != '\n'; ++i) {
+    for (size_t i = 0;
+        i < len &&
+        start[i] != '\r' &&
+        start[i] != '\n';
+        ++i)
+    {
         buffer[i] = start[i];
     }
     DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "[EDR] %s: %s\n", label, buffer);

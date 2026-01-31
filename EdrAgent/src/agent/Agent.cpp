@@ -1,13 +1,16 @@
 #include "..\agent\Agent.h"
-#include "..\managers\configuration_manager\ConfigurationManager.h"
-#include "..\managers\service_manager\ServiceManager.h"
-#include "..\commons\logger\Logger.h"
+#include "ConfigurationManager.h"
+#include "ServiceManager.h"
+#include "Logger.h"
 
 //====================================================
 // Agent Implementation
 //====================================================
 
-AnubisAgent::AnubisAgent() : m_isRunning(false), m_Logger(Logger::GetInstance()) {
+AnubisAgent::AnubisAgent()
+    :   m_isRunning(false),
+        m_Logger(Logger::GetInstance())
+{
     // Create core components
     m_configManager = std::make_unique<ConfigurationManager>();
     m_serviceManager = std::make_unique<ServiceManager>(m_configManager.get());
@@ -23,7 +26,8 @@ AnubisAgent::~AnubisAgent() {
  * @param configPath Path to the configuration file.
  * @return true if initialization was successful, false otherwise.
  */
-bool AnubisAgent::Initialize(const std::string& configPath)
+bool 
+AnubisAgent::Initialize(const std::string& configPath)
 {
     // First, load the configuration
     m_Logger.Info("Agent", "Loading configuration from: " + configPath);

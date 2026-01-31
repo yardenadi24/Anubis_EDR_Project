@@ -81,5 +81,11 @@
     <ClInclude Include="src\utils\kDiskUtils.h">
       <Filter>Source Files\utils</Filter>
     </ClInclude>
+    <ClInclude Include="src\commons\SharedCommonsFs.h">
+      <Filter>Source Files\commons</Filter>
+    </ClInclude>
+    <ClInclude Include="src\commons\SharedCommonsPs.h">
+      <Filter>Source Files\commons</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

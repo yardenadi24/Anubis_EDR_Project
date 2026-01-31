@@ -1,5 +1,5 @@
 #pragma once
-#include "../commons/commons.h"
+#include "commons.h"
 
 #include <ntifs.h>
 #include <ntdef.h>

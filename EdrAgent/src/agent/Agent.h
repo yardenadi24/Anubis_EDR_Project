@@ -11,11 +11,11 @@
 #include <filesystem>
 #include <fstream>
 
-#include "..\commons\SharedCommons.h" // This contains the shared structures
+#include "SharedCommons.h" // This contains the shared structures
 
-#include "..\managers\service_manager\ServiceManager.h"
-#include "..\managers\configuration_manager\ConfigurationManager.h"
-#include "..\commons\logger\Logger.h" 
+#include "ServiceManager.h"
+#include "ConfigurationManager.h"
+#include "Logger.h" 
 
 // Configuration structure for the agent
 struct AgentConfig {

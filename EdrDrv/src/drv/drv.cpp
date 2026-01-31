@@ -1,10 +1,10 @@
 #include "drv.h"
-#include "../process_monitor/ProcessMonitor.h"
+#include "ProcessMonitor.h"
 
 #define DEVICE_NAME L"\\Device\\AnubisEdrDevice"
 #define SYMLINK_NAME L"\\??\\AnubisEdrDevice"
 
-PDEVICE_OBJECT g_pDeviceObject = NULL;
+//PDEVICE_OBJECT g_pDeviceObject = NULL;
 
 NTSTATUS
 DriverEntry(

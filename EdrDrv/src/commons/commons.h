@@ -1,6 +1,5 @@
 #pragma once
 #include <ntifs.h>
-#include <fltKernel.h>
 #include "SharedCommons.h"
 
 static PDEVICE_OBJECT g_pDeviceObject;
@@ -12,6 +11,7 @@ static PDEVICE_OBJECT g_pDeviceObject;
 #define DbgPrintln(s,...) DbgPrint(DRIVER_PREFIX "[%s] " s "\n",__FUNCTION__ ,__VA_ARGS__)
 
 #define DbgError(s,...) DbgPrintln("<Error> " s , __VA_ARGS__)
+#define DbgWarning(s,...) DbgPrintln("<Warning> " s , __VA_ARGS__)
 #define DbgInfo(s,...) DbgPrintln("<Info> " s , __VA_ARGS__)
 
 #define BOOLEAN_ALL_FLAG_ON(Mask, Flags) (((Mask) & (Flags)) == (Flags))

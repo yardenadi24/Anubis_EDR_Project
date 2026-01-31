@@ -20,40 +20,43 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent\Agent.cpp" />
-    <ClCompile Include="src\commons\logger\Logger.cpp" />
+    <ClCompile Include="src\commons\Logger.cpp" />
+    <ClCompile Include="src\events\SecurityEvent.cpp" />
     <ClCompile Include="src\main.cpp" />
-    <ClCompile Include="src\managers\configuration_manager\ConfigurationManager.cpp" />
-    <ClCompile Include="src\managers\service_manager\ServiceManager.cpp" />
-    <ClCompile Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.cpp" />
-    <ClCompile Include="src\modules\security_modules\yara_analysis\YaraModule.cpp" />
-    <ClCompile Include="src\services\anti_malware\AntiMalwareService.cpp" />
-    <ClCompile Include="src\services\event_persistence\EventPersistenceService.cpp" />
-    <ClCompile Include="src\services\process_monitor\ProcessMonitorService.cpp" />
-    <ClCompile Include="src\services\security_event\SecurityEventService.cpp" />
-    <ClCompile Include="src\services\verdict_db\VerdictDbService.cpp" />
-    <ClCompile Include="src\utils\filesystem\FilesystemUtils.cpp" />
-    <ClCompile Include="src\utils\strings\StringUtil.cpp" />
-    <ClCompile Include="src\utils\ui\AlertWindow.cpp" />
+    <ClCompile Include="src\managers\ConfigurationManager.cpp" />
+    <ClCompile Include="src\managers\ServiceManager.cpp" />
+    <ClCompile Include="src\modules\security_modules\VerdictDbModule.cpp" />
+    <ClCompile Include="src\modules\security_modules\YaraModule.cpp" />
+    <ClCompile Include="src\services\AntiMalwareService.cpp" />
+    <ClCompile Include="src\services\EventPersistenceService.cpp" />
+    <ClCompile Include="src\services\FilesystemMonitorService.cpp" />
+    <ClCompile Include="src\services\ProcessMonitorService.cpp" />
+    <ClCompile Include="src\services\SecurityEventService.cpp" />
+    <ClCompile Include="src\services\VerdictDbService.cpp" />
+    <ClCompile Include="src\utils\AlertWindow.cpp" />
+    <ClCompile Include="src\utils\FilesystemUtils.cpp" />
+    <ClCompile Include="src\utils\StringUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\agent\Agent.h" />
-    <ClInclude Include="src\commons\logger\Logger.h" />
+    <ClInclude Include="src\commons\Logger.h" />
     <ClInclude Include="src\commons\SharedCommons.h" />
-    <ClInclude Include="src\events\security_event\SecurityEvent.h" />
-    <ClInclude Include="src\managers\configuration_manager\ConfigurationManager.h" />
-    <ClInclude Include="src\managers\service_manager\ServiceManager.h" />
+    <ClInclude Include="src\events\SecurityEvent.h" />
+    <ClInclude Include="src\managers\ConfigurationManager.h" />
+    <ClInclude Include="src\managers\ServiceManager.h" />
     <ClInclude Include="src\modules\security_modules\ISecurityModule.h" />
-    <ClInclude Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.h" />
-    <ClInclude Include="src\modules\security_modules\yara_analysis\YaraModule.h" />
-    <ClInclude Include="src\services\anti_malware\AntiMalwareService.h" />
-    <ClInclude Include="src\services\event_persistence\EventPersistenceService.h" />
+    <ClInclude Include="src\modules\security_modules\VerdictDbModule.h" />
+    <ClInclude Include="src\modules\security_modules\YaraModule.h" />
+    <ClInclude Include="src\services\AntiMalwareService.h" />
+    <ClInclude Include="src\services\EventPersistenceService.h" />
+    <ClInclude Include="src\services\FilesystemMonitorService.h" />
     <ClInclude Include="src\services\IService.h" />
-    <ClInclude Include="src\services\process_monitor\ProcessMonitorService.h" />
-    <ClInclude Include="src\services\security_event\SecurityEventService.h" />
-    <ClInclude Include="src\services\verdict_db\VerdictDbService.h" />
-    <ClInclude Include="src\utils\filesystem\FilesystemUtils.h" />
-    <ClInclude Include="src\utils\strings\StringUtil.h" />
-    <ClInclude Include="src\utils\ui\AlertWindow.h" />
+    <ClInclude Include="src\services\ProcessMonitorService.h" />
+    <ClInclude Include="src\services\SecurityEventService.h" />
+    <ClInclude Include="src\services\VerdictDbService.h" />
+    <ClInclude Include="src\utils\AlertWindow.h" />
+    <ClInclude Include="src\utils\FilesystemUtils.h" />
+    <ClInclude Include="src\utils\StringUtil.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="anubis_config.ini" />
@@ -145,14 +148,28 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Yarden\Desktop\EDR_POCs\vcpkg\installed\x64-windows-static\include</AdditionalIncludeDirectories>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalIncludeDirectories>
+      $(SolutionDir)..\third_party\rapidjson\include;
+      $(SolutionDir)..\third_party\yara\libyara\include;
+      $(SolutionDir)src\agent;
+      $(SolutionDir)src\commons;
+      $(SolutionDir)src\events;
+      $(SolutionDir)src\managers;
+      $(SolutionDir)src\modules;
+      $(SolutionDir)src\modules\security_modules;
+      $(SolutionDir)src\services;
+      $(SolutionDir)src\utils;
+      $(SolutionDir)src\;
+      $(SolutionDir)..\EdrDrv\src\commons;
+      </AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>C:\Users\Yarden\Desktop\EDR_POCs\vcpkg\installed\x64-windows-static\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);libyara.lib;libcrypto.lib;ws2_32.lib;bcrypt.lib;crypt32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\Yarden\Desktop\EDR_POCs\vcpkg\installed\x64-windows-static\lib;C:\Users\Jordan\Desktop\EDR\Anubis_EDR_Project\third_party\yara\windows\vs2019\libyara\Debug;C:\Users\Jordan\Desktop\EDR\Anubis_EDR_Project\third_party\yara\windows\vs2019\packages\YARA.OpenSSL.x64.1.1.1\lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);libyara64.lib;libcrypto.lib;ws2_32.lib;bcrypt.lib;crypt32.lib;advapi32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

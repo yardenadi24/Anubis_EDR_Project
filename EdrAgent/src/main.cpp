@@ -2,26 +2,29 @@
 #include <string>
 #include <csignal>
 
+// Agent
 #include "agent/agent.h"
 
+// Services
 #include "services/IService.h"
-#include "services/process_monitor/ProcessMonitorService.h"
-#include "services/anti_malware/AntiMalwareService.h"
-#include "services/security_event/SecurityEventService.h"
-#include "services/event_persistence/EventPersistenceService.h"
+#include "ProcessMonitorService.h"
+#include "AntiMalwareService.h"
+#include "SecurityEventService.h"
+#include "EventPersistenceService.h"
+#include "FilesystemMonitorService.h"
 
+// Managers
+#include "ServiceManager.h"
 
-
-#include "managers/service_manager/ServiceManager.h"
-
-#include "modules/security_modules/yara_analysis/YaraModule.h"
-#include "modules/security_modules/yara_analysis/YaraModule.h"
-#include "modules/security_modules/verdict_db_analysis/VerdictDbModule.h"
+// Modules
+#include "YaraModule.h"
+#include "VerdictDbModule.h"
 
 #include <thread> 
 
 AnubisAgent* g_agent = nullptr;
 
+// Hnadle signals for graceful shutdown
 void SignalHandler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
         std::cout << "\nReceived termination signal. Shutting down..." << std::endl;
@@ -31,6 +34,7 @@ void SignalHandler(int signal) {
     }
 }
 
+// Print usage instructions
 void PrintUsage() {
     std::cout << "Anubis EDR Agent - Modular Security Framework\n";
     std::cout << "Usage: AnubisAgent.exe [config_file]\n";
@@ -47,8 +51,10 @@ void PrintUsage() {
     std::cout << "  stats       - Show anti-malware statistics\n";
 }
 
+// Main entry point
 int main(int argc, char* argv[])
 {
+	// Default config file path
     std::string configFile = "C:\\ProgramData\\Anubis\\Config\\anubis_config.ini";
 
     // Override config file if provided
@@ -106,6 +112,9 @@ int main(int argc, char* argv[])
     antiMalwareService->RegisterModule(yaraModule);
     antiMalwareService->RegisterModule(verdictDbModule);
 
+    auto fileMonitorService = std::make_shared<FilesystemMonitorService>();
+    serviceManager->RegisterService(fileMonitorService);
+
     // Start the agent
     if (!g_agent->Start()) {
         std::cerr << "Failed to start agent. Exiting." << std::endl;
@@ -161,7 +170,7 @@ int main(int argc, char* argv[])
                 serviceManager->StartService(serviceName);
 			}
 			else {
-				std::cout << "Please specify a service name to start." << std::endl;
+				std::cout << "Please specify a valid service name to start." << std::endl;
 			}
         }
         else if (command == "modules") {

@@ -1,5 +1,6 @@
 #pragma once
-#include "../commons/commons.h"
+#include "commons.h"
+#include "SharedCommonsPs.h"
 
 // Globals
 typedef struct _PROCESS_MONITOR {

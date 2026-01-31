@@ -34,153 +34,120 @@
     <Filter Include="Source Files\commons">
       <UniqueIdentifier>{ac86abf7-f5ce-41c5-a188-48f6b53f49c6}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\commons\logger">
-      <UniqueIdentifier>{ff6518ab-2b7b-40f9-a923-87831f58297b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\events\security_event">
-      <UniqueIdentifier>{000f2c75-2c4d-4ebd-8a44-5f08a0fe73a4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\managers\configration_manager">
-      <UniqueIdentifier>{912d3f87-d66b-43f6-bdf7-648fb92b9ab1}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\managers\service_manager">
-      <UniqueIdentifier>{249e72bf-9c8e-44df-80b6-a89dddc2f3aa}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\modules\security_modules">
       <UniqueIdentifier>{99b3065e-10c0-4486-bd9f-6748c522f68b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\services\anit_malware">
-      <UniqueIdentifier>{3f5ef741-d921-4cd8-9dc5-fe7c1ade6216}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\services\event_persistence">
-      <UniqueIdentifier>{709b5c57-898a-4ff0-891b-21365804ea40}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\services\process_monitor">
-      <UniqueIdentifier>{33abff7d-ac8d-4973-82e9-e038c491914a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\services\security_event">
-      <UniqueIdentifier>{cd888ddc-aa86-43f9-8cb3-f95930fcde97}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\utils\filesystem">
-      <UniqueIdentifier>{839583a2-1aa5-47cf-8e5e-4e3945192562}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\utils\strings">
-      <UniqueIdentifier>{2d7f9456-26dd-41c7-bcfe-b7b6beb5e247}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\utils\ui">
-      <UniqueIdentifier>{3e12ee9d-ac88-4ced-8ee0-eba25734820e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\services\verdict_db">
-      <UniqueIdentifier>{5547aabc-f2b0-46a6-8323-2d97d407d0aa}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\modules\security_modules\verdict_db_analysis">
-      <UniqueIdentifier>{1d0bdaf2-2bc0-4a12-bf41-c04f6b14ae92}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\modules\security_modules\yara_analysis">
-      <UniqueIdentifier>{1f584874-2e89-4207-960b-31a4d8d24f2e}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\agent\Agent.cpp">
       <Filter>Source Files\agent</Filter>
     </ClCompile>
-    <ClCompile Include="src\commons\logger\Logger.cpp">
-      <Filter>Source Files\commons\logger</Filter>
-    </ClCompile>
-    <ClCompile Include="src\managers\configuration_manager\ConfigurationManager.cpp">
-      <Filter>Source Files\managers\configration_manager</Filter>
-    </ClCompile>
-    <ClCompile Include="src\managers\service_manager\ServiceManager.cpp">
-      <Filter>Source Files\managers\service_manager</Filter>
-    </ClCompile>
-    <ClCompile Include="src\modules\security_modules\yara_analysis\YaraModule.cpp">
-      <Filter>Source Files\modules\security_modules\yara_analysis</Filter>
-    </ClCompile>
-    <ClCompile Include="src\services\security_event\SecurityEventService.cpp">
-      <Filter>Source Files\services\security_event</Filter>
-    </ClCompile>
-    <ClCompile Include="src\services\process_monitor\ProcessMonitorService.cpp">
-      <Filter>Source Files\services\process_monitor</Filter>
-    </ClCompile>
-    <ClCompile Include="src\services\event_persistence\EventPersistenceService.cpp">
-      <Filter>Source Files\services\event_persistence</Filter>
-    </ClCompile>
-    <ClCompile Include="src\services\anti_malware\AntiMalwareService.cpp">
-      <Filter>Source Files\services\anit_malware</Filter>
-    </ClCompile>
-    <ClCompile Include="src\utils\ui\AlertWindow.cpp">
-      <Filter>Source Files\utils\ui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\utils\strings\StringUtil.cpp">
-      <Filter>Source Files\utils\strings</Filter>
-    </ClCompile>
-    <ClCompile Include="src\utils\filesystem\FilesystemUtils.cpp">
-      <Filter>Source Files\utils\filesystem</Filter>
-    </ClCompile>
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\services\verdict_db\VerdictDbService.cpp">
-      <Filter>Source Files\services\verdict_db</Filter>
+    <ClCompile Include="src\commons\Logger.cpp">
+      <Filter>Source Files\commons</Filter>
     </ClCompile>
-    <ClCompile Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.cpp">
-      <Filter>Source Files\modules\security_modules\verdict_db_analysis</Filter>
+    <ClCompile Include="src\events\SecurityEvent.cpp">
+      <Filter>Source Files\events</Filter>
+    </ClCompile>
+    <ClCompile Include="src\managers\ConfigurationManager.cpp">
+      <Filter>Source Files\managers</Filter>
+    </ClCompile>
+    <ClCompile Include="src\managers\ServiceManager.cpp">
+      <Filter>Source Files\managers</Filter>
+    </ClCompile>
+    <ClCompile Include="src\modules\security_modules\VerdictDbModule.cpp">
+      <Filter>Source Files\modules\security_modules</Filter>
+    </ClCompile>
+    <ClCompile Include="src\modules\security_modules\YaraModule.cpp">
+      <Filter>Source Files\modules\security_modules</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\AntiMalwareService.cpp">
+      <Filter>Source Files\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\EventPersistenceService.cpp">
+      <Filter>Source Files\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\FilesystemMonitorService.cpp">
+      <Filter>Source Files\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\ProcessMonitorService.cpp">
+      <Filter>Source Files\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\SecurityEventService.cpp">
+      <Filter>Source Files\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\VerdictDbService.cpp">
+      <Filter>Source Files\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\AlertWindow.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\FilesystemUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\StringUtil.cpp">
+      <Filter>Source Files\utils</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\agent\Agent.h">
       <Filter>Source Files\agent</Filter>
     </ClInclude>
-    <ClInclude Include="src\commons\logger\Logger.h">
-      <Filter>Source Files\commons\logger</Filter>
-    </ClInclude>
     <ClInclude Include="src\commons\SharedCommons.h">
       <Filter>Source Files\commons</Filter>
-    </ClInclude>
-    <ClInclude Include="src\events\security_event\SecurityEvent.h">
-      <Filter>Source Files\events\security_event</Filter>
-    </ClInclude>
-    <ClInclude Include="src\managers\configuration_manager\ConfigurationManager.h">
-      <Filter>Source Files\managers\configration_manager</Filter>
-    </ClInclude>
-    <ClInclude Include="src\managers\service_manager\ServiceManager.h">
-      <Filter>Source Files\managers\service_manager</Filter>
     </ClInclude>
     <ClInclude Include="src\modules\security_modules\ISecurityModule.h">
       <Filter>Source Files\modules\security_modules</Filter>
     </ClInclude>
-    <ClInclude Include="src\modules\security_modules\yara_analysis\YaraModule.h">
-      <Filter>Source Files\modules\security_modules\yara_analysis</Filter>
-    </ClInclude>
     <ClInclude Include="src\services\IService.h">
       <Filter>Source Files\services</Filter>
     </ClInclude>
-    <ClInclude Include="src\services\security_event\SecurityEventService.h">
-      <Filter>Source Files\services\security_event</Filter>
+    <ClInclude Include="src\commons\Logger.h">
+      <Filter>Source Files\commons</Filter>
     </ClInclude>
-    <ClInclude Include="src\services\process_monitor\ProcessMonitorService.h">
-      <Filter>Source Files\services\process_monitor</Filter>
+    <ClInclude Include="src\events\SecurityEvent.h">
+      <Filter>Source Files\events</Filter>
     </ClInclude>
-    <ClInclude Include="src\services\event_persistence\EventPersistenceService.h">
-      <Filter>Source Files\services\event_persistence</Filter>
+    <ClInclude Include="src\managers\ConfigurationManager.h">
+      <Filter>Source Files\managers</Filter>
     </ClInclude>
-    <ClInclude Include="src\services\anti_malware\AntiMalwareService.h">
-      <Filter>Source Files\services\anit_malware</Filter>
+    <ClInclude Include="src\managers\ServiceManager.h">
+      <Filter>Source Files\managers</Filter>
     </ClInclude>
-    <ClInclude Include="src\utils\ui\AlertWindow.h">
-      <Filter>Source Files\utils\ui</Filter>
+    <ClInclude Include="src\modules\security_modules\VerdictDbModule.h">
+      <Filter>Source Files\modules\security_modules</Filter>
     </ClInclude>
-    <ClInclude Include="src\utils\strings\StringUtil.h">
-      <Filter>Source Files\utils\strings</Filter>
+    <ClInclude Include="src\modules\security_modules\YaraModule.h">
+      <Filter>Source Files\modules\security_modules</Filter>
     </ClInclude>
-    <ClInclude Include="src\utils\filesystem\FilesystemUtils.h">
-      <Filter>Source Files\utils\filesystem</Filter>
+    <ClInclude Include="src\services\AntiMalwareService.h">
+      <Filter>Source Files\services</Filter>
     </ClInclude>
-    <ClInclude Include="src\services\verdict_db\VerdictDbService.h">
-      <Filter>Source Files\services\verdict_db</Filter>
+    <ClInclude Include="src\services\EventPersistenceService.h">
+      <Filter>Source Files\services</Filter>
     </ClInclude>
-    <ClInclude Include="src\modules\security_modules\verdict_db_analysis\VerdictDbModule.h">
-      <Filter>Source Files\modules\security_modules\verdict_db_analysis</Filter>
+    <ClInclude Include="src\services\FilesystemMonitorService.h">
+      <Filter>Source Files\services</Filter>
+    </ClInclude>
+    <ClInclude Include="src\services\ProcessMonitorService.h">
+      <Filter>Source Files\services</Filter>
+    </ClInclude>
+    <ClInclude Include="src\services\SecurityEventService.h">
+      <Filter>Source Files\services</Filter>
+    </ClInclude>
+    <ClInclude Include="src\services\VerdictDbService.h">
+      <Filter>Source Files\services</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\AlertWindow.h">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\FilesystemUtils.h">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\StringUtil.h">
+      <Filter>Source Files\utils</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

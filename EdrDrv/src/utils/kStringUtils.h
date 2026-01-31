@@ -1,7 +1,8 @@
 #pragma once
-#include <fltKernel.h>
+#pragma warning(disable: 4996)
+#pragma warning(disable: 4505) 
 
-inline
+static
 NTSTATUS
 CloneUnicodeString(
 	PCUNICODE_STRING pSrc, 
@@ -28,7 +29,7 @@ CloneUnicodeString(
 	return STATUS_SUCCESS;
 }
 
-VOID BytesToHexString(
+static VOID BytesToHexString(
 	_In_reads_bytes_(Length) PUCHAR Bytes,
 	_In_ ULONG Length,
 	_Out_writes_(Length * 2 + 1) PCHAR HexString

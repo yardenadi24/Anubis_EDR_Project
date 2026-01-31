@@ -1,5 +1,5 @@
 #pragma once
-#include <Ntddstor.h>
+//#include <Ntddstor.h>
 #include <fltKernel.h>
 #include <ntddk.h>
 #include <bcrypt.h>

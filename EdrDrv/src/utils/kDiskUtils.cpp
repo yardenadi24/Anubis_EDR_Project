@@ -1,7 +1,7 @@
 #include "kDiskUtils.h"
 #include "kOsUtils.h"
-#include <ntstrsafe.h>
 #include "kStringUtils.h"
+#include <ntstrsafe.h>
 
 NTSTATUS
 GetVolumeObject(

@@ -1,5 +1,4 @@
 #pragma once
-#include <Windows.h>
 
 // Avoid including kernel or user headers directly
 #define MAX_PATH 260
@@ -7,12 +6,6 @@
 
 typedef unsigned long ULONG;
 typedef UCHAR BOOLEAN;
-
-typedef struct _AGENT_PROCESS_EVENT {
-    ULONG ProcessId;
-    WCHAR ImageFileName[MAX_PATH];
-    BOOLEAN AllowProcess;
-}AGENT_PROCESS_EVENT, * PAGENT_PROCESS_EVENT;
 
 // Device type
 #define FILE_DEVICE_EDR   0x8000
@@ -30,7 +23,6 @@ typedef struct _AGENT_PROCESS_EVENT {
 #define IOCTL_POST_PROCESS_VERDICT          EDR_CTL_CODE_BUFFERED(0x801)
 #define IOCTL_START_MONITORING              EDR_CTL_CODE_BUFFERED(0x802)
 #define IOCTL_STOP_MONITORING              EDR_CTL_CODE_BUFFERED(0x803)
-
 
 /*
        * Buffered I/O

@@ -1,5 +1,5 @@
 #pragma once
-#include "..\commons\commons.h"
+#include "commons.h"
 
 inline UINT64 getTickCount64();
 

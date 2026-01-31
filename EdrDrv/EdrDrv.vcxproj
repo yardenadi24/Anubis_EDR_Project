@@ -87,8 +87,11 @@
     </DriverSign>
     <Link>
       <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfLdr.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfDriverEntry.lib;FltMgr.lib</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfLdr.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfDriverEntry.lib;FltMgr.lib;bcrypt.lib</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\drv;$(SolutionDir)src\commons;$(SolutionDir)src\filesystem_monitor;$(SolutionDir)src\network_monitor;$(SolutionDir)src\process_monitor;$(SolutionDir)src\utils;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DriverSign>
@@ -119,6 +122,8 @@
   <ItemGroup>
     <ClInclude Include="src\commons\commons.h" />
     <ClInclude Include="src\commons\SharedCommons.h" />
+    <ClInclude Include="src\commons\SharedCommonsFs.h" />
+    <ClInclude Include="src\commons\SharedCommonsPs.h" />
     <ClInclude Include="src\drv\drv.h" />
     <ClInclude Include="src\filesystem_monitor\FileMonitorFilter.h" />
     <ClInclude Include="src\process_monitor\ProcessMonitor.h" />

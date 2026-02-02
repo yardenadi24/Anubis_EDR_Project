@@ -61,6 +61,39 @@ typedef enum _FILE_EVENT_FLAGS : ULONG {
     FILE_EVENT_FLAG_HIGH_RISK_OPERATION = 0x00008000
 } FILE_EVENT_FLAGS;
 
+
+//=============================================================================
+// ENUMERATIONS
+//=============================================================================
+
+
+// Volume driver types
+enum class VOLUME_DRIVER_TYPE {
+    NONE,
+    FIXED,
+    NETWORK,
+    REMOVABLE,
+    LAST
+};
+
+// File creation status
+enum class FILE_CREATION_STATUS {
+    NONE,
+    CREATED,
+    OPENED,
+    TRUNCATED,
+    LAST
+};
+
+// Sequence types
+enum class SEQUENCE_TYPE {
+    NONE,
+    READ,
+    WRITE,
+    LAST
+};
+
+
 //typedef enum _FILE_INFORMATION_CLASS {
 //    FileDirectoryInformation = 1,
 //    FileFullDirectoryInformation = 2,

@@ -30,37 +30,6 @@ static constexpr USHORT c_MinSectorSize = 0x200;
 static constexpr UINT64 c_nUnknownFileSize = (UINT64)-1;
 constexpr UINT32 c_nSendMsgTimeout = 2 * 1000; // 2 seconds
 
-//=============================================================================
-// ENUMERATIONS
-//=============================================================================
-
-
-// Volume driver types
-enum class VOLUME_DRIVER_TYPE {
-    NONE,
-    FIXED,
-    NETWORK,
-    REMOVABLE,
-    LAST
-};
-
-// File creation status
-enum class FILE_CREATION_STATUS {
-    NONE,
-    CREATED,
-    OPENED,
-    TRUNCATED,
-    LAST
-};
-
-// Sequence types
-enum class SEQUENCE_TYPE {
-    NONE,
-    READ,
-    WRITE,
-    LAST
-};
-
 
 //=============================================================================
 // CONTEXT STRUCTURES
@@ -128,7 +97,7 @@ typedef struct _SEQUENCE_ACTION {
 
 // Stream handle context for file tracking
 typedef struct _STREAM_HANDLE_CONTEXT {
-    ULONG_PTR nOpeningProcessId;
+    ULONG nOpeningProcessId;
     PFLT_FILE_NAME_INFORMATION pNameInfo;
     PINSTANCE_CONTEXT pInstCtx;
 
@@ -148,12 +117,8 @@ typedef struct _STREAM_HANDLE_CONTEXT {
     SEQUENCE_ACTION SequenceWriteInfo;
 
     // Constructor/Destructor
-    _STREAM_HANDLE_CONTEXT();
-    ~_STREAM_HANDLE_CONTEXT();
-
-    // Operators
-    PVOID __cdecl operator new(size_t, PVOID p) { return p; }
-    VOID __cdecl operator delete(PVOID, PVOID) {}
+    void InitializeInternals();
+    void CleanUpInternal();
 
     // Static methods
     static NTSTATUS Initialize(_STREAM_HANDLE_CONTEXT** ppStreamCtx, PCFLT_RELATED_OBJECTS pFltObjects);
@@ -359,17 +324,6 @@ NTSTATUS InitializeCommunicationPort();
 VOID CleanupCommunicationPort();
 
 //=============================================================================
-// EVENT CREATION AND ANALYSIS FUNCTIONS
-//=============================================================================
-
-NTSTATUS CreateBaseFileEvent(
-    _Out_ PFILE_SYSTEM_EVENT Event,
-    _In_ FILE_OPERATION_TYPE Operation,
-    _In_ PFLT_CALLBACK_DATA Data,
-    _In_ PCFLT_RELATED_OBJECTS FltObjects,
-    _In_opt_ PFLT_FILE_NAME_INFORMATION NameInfo);
-
-//=============================================================================
 // FILE AND PATH ANALYSIS FUNCTIONS
 //=============================================================================
 
@@ -389,11 +343,12 @@ BOOLEAN IsSuspiciousPath(PUNICODE_STRING FilePath);
 //=============================================================================
 // EVENT SENDING AND MEMORY MANAGEMENT
 //=============================================================================
-
-NTSTATUS SendFileSystemEvent(_In_ PFILE_SYSTEM_EVENT Event);
-//BOOLEAN ApplyRateLimit(_In_ PFILE_SYSTEM_EVENT Event);
-
-
+NTSTATUS
+SendFilesystemEvent(
+    FsEventType eventType,
+    PSTREAM_HANDLE_CONTEXT pStreamCtx,
+    PINSTANCE_CONTEXT pinstCtx
+);
 // Event pool
 PFILE_SYSTEM_EVENT AllocateEventFromPool();
 VOID FreeEventFromPool(_In_ PFILE_SYSTEM_EVENT Event);

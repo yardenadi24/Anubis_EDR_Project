@@ -454,49 +454,6 @@ NTSTATUS FLTAPI FilterMessageNotify(
     return STATUS_SUCCESS;
 }
 
-NTSTATUS SendFileSystemEvent(_In_ PFILE_SYSTEM_EVENT Event)
-{
-    if (!g_PortInitialized || !g_ConnectionContext.IsConnected || g_pClientPort == NULL) {
-        return STATUS_PORT_DISCONNECTED;
-    }
-
-    if (!ShouldReportFileEvent(Event)) {
-        return STATUS_SUCCESS; // Event filtered out
-    }
-
-    ULONG replyLength = 0;
-    LARGE_INTEGER timeout;
-    timeout.QuadPart = -((LONGLONG)c_nSendMsgTimeout * 10000); // Convert ms to 100ns units
-
-    Event->Header.TimeStamp = getTickCount64();
-
-    // Send the event to user-mode
-    NTSTATUS Status = FltSendMessage(
-        g_pFilter,
-        &g_pClientPort,
-        Event,
-        sizeof(FILE_SYSTEM_EVENT),
-        NULL,                    // No reply expected
-        &replyLength,
-        &timeout
-    );
-
-    if (!NT_SUCCESS(Status)) {
-        if (Status == STATUS_TIMEOUT) {
-            DbgWarning("Timeout sending file event to user-mode");
-        }
-        else if (Status == STATUS_PORT_DISCONNECTED) {
-            DbgWarning("Client disconnected while sending event");
-            g_ConnectionContext.IsConnected = FALSE;
-        }
-        else {
-            DbgError("Failed to send event: 0x%x", Status);
-        }
-    }
-
-    return Status;
-}
-
 PFILE_SYSTEM_EVENT
 AllocateEventFromPool()
 {
@@ -516,9 +473,7 @@ AllocateEventFromPool()
 }
 
 VOID
-FreeEventFromPool(
-    PFILE_SYSTEM_EVENT pEvent
-)
+FreeEventFromPool(_In_ PFILE_SYSTEM_EVENT pEvent)
 {
     if (pEvent) {
         ExFreePoolWithTag(pEvent, EDR_MEMORY_TAG);
@@ -725,7 +680,7 @@ CollectUsbInfo(
 }
 
 
-STREAM_HANDLE_CONTEXT::_STREAM_HANDLE_CONTEXT()
+void STREAM_HANDLE_CONTEXT::InitializeInternals()
 {
     nOpeningProcessId = 0;
     pNameInfo = NULL;
@@ -1015,7 +970,8 @@ SEQUENCE_ACTION::InitializeHash()
     return STATUS_SUCCESS;
 }
 
-STREAM_HANDLE_CONTEXT::~_STREAM_HANDLE_CONTEXT()
+void 
+STREAM_HANDLE_CONTEXT::CleanUpInternal()
 {
     if (pNameInfo) {
         FltReleaseFileNameInformation(pNameInfo);
@@ -1053,7 +1009,7 @@ STREAM_HANDLE_CONTEXT::Initialize(
     if (!NT_SUCCESS(status)) {
         return status;
     }
-
+	pContext->InitializeInternals();
     *ppStreamCtx = pContext;
     return STATUS_SUCCESS;
 }
@@ -1072,7 +1028,7 @@ STREAM_HANDLE_CONTEXT::CleanUp(
     PSTREAM_HANDLE_CONTEXT pStreamCtx = (PSTREAM_HANDLE_CONTEXT)Context;
 
     // Call destructor
-    pStreamCtx->~STREAM_HANDLE_CONTEXT();
+    pStreamCtx->CleanUpInternal();
 }
 
 
@@ -1089,6 +1045,8 @@ isSelfProtected(
     PCUNICODE_STRING pusFileName, 
     ACCESS_MASK desiredAccess)
 {
+	UNREFERENCED_PARAMETER(pusFileName);
+	UNREFERENCED_PARAMETER(desiredAccess);
     // TODO
     return FALSE;
 }
@@ -1116,17 +1074,15 @@ FLT_PREOP_CALLBACK_STATUS FLTAPI PreCreate(
     if (FlagOn(pData->Iopb->OperationFlags, SL_OPEN_PAGING_FILE))
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    HANDLE nProcessId = (HANDLE)(ULONG_PTR)FltGetRequestorProcessId(pData);
-
     // Get Name Info
     // Disable logging this errors. Can't identify problem object. 
-    PFLT_FILE_NAME_INFORMATION pNameInfo = nullptr;
-    (void)FltGetFileNameInformation(pData, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &pNameInfo);
-    if (pNameInfo == nullptr)
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    //PFLT_FILE_NAME_INFORMATION pNameInfo = nullptr;
+    //(void)FltGetFileNameInformation(pData, (FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT), &pNameInfo);
+    //if (pNameInfo == nullptr)
+    //    return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
-    // Check rules
-    ACCESS_MASK desiredAccess = pData->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
+    //// Check rules
+    //ACCESS_MASK desiredAccess = pData->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
     // TODO:: Check self protection
 
 
@@ -1153,7 +1109,6 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCreate(
     PFLT_FILE_NAME_INFORMATION pNameInfo = NULL;
     PINSTANCE_CONTEXT pInstCtx = NULL;
     PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
-    PFILE_SYSTEM_EVENT pEvent = NULL;
 
     __try
     {
@@ -1199,20 +1154,28 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCreate(
             FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
             &pNameInfo);
 
-        if (!NT_SUCCESS(status) || pNameInfo == NULL)
+        if (pNameInfo == NULL)
+        {
             return FLT_POSTOP_FINISHED_PROCESSING;
+        }
+        else {
+            FltParseFileNameInformation(pNameInfo);
+        }
 
         // Create and initialize stream handle context
         status = STREAM_HANDLE_CONTEXT::Initialize(&pStreamHandleCtx, pFltObjects);
         if (!NT_SUCCESS(status))
             return FLT_POSTOP_FINISHED_PROCESSING;
 
+		// Fill context fields
+		// Set name info
         FltReferenceFileNameInformation(pNameInfo);
         pStreamHandleCtx->pNameInfo = pNameInfo;
+		// Set other fields
         pStreamHandleCtx->nOpeningProcessId = processId;
         pStreamHandleCtx->fIsDirectory = fIsDirectory;
         pStreamHandleCtx->nSizeAtCreation = nSizeAtCreation;
-
+		// Set instance context
         FltReferenceContext(pInstCtx);
         pStreamHandleCtx->pInstCtx = pInstCtx;
 
@@ -1220,15 +1183,17 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCreate(
         ACCESS_MASK desiredAccess = pData->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
         ULONG createOptions = pData->Iopb->Parameters.Create.Options & 0xFFFFFF;
 
+        // Check for deletion
         pStreamHandleCtx->fDeleteOnClose = 
             BooleanFlagOn(createOptions, FILE_DELETE_ON_CLOSE);
+        // Check for execute
         pStreamHandleCtx->fIsExecute =
             !FlagOn(createOptions, FILE_DIRECTORY_FILE) &&
             FlagOn(desiredAccess, FILE_EXECUTE) &&
-            !FlagOn(desiredAccess, FILE_WRITE_DATA) &&
-            !FlagOn(desiredAccess, FILE_READ_EA);
+            (!FlagOn(desiredAccess, FILE_WRITE_DATA)) &&
+            (!FlagOn(desiredAccess, FILE_READ_EA));
 
-        // Fill eCreationStatus
+        // Fill Creation status
         switch (pData->IoStatus.Information)
         {
         case FILE_SUPERSEDED:
@@ -1252,35 +1217,12 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCreate(
 
         pStreamHandleCtx->SequenceReadInfo.fEnabled = TRUE;
 
-        // Create unified event
-        pEvent = AllocateEventFromPool();
-
-        if (pEvent != NULL) {
-
-            status = CreateBaseFileEvent(pEvent, FILE_OP_CREATE, pData, pFltObjects, pNameInfo);
-
-            if (NT_SUCCESS(status)) {
-
-                // Fill create-specific data
-                auto& createData = pEvent->OperationData.Create;
-
-                createData.DesiredAccess = desiredAccess;
-                createData.CreateOptions = createOptions;
-                createData.ShareAccess = pData->Iopb->Parameters.Create.ShareAccess;
-                createData.FileSize.QuadPart = nSizeAtCreation;
-                createData.CreatedNewFile = (pData->IoStatus.Information == FILE_CREATED);
-                createData.DeleteOnClose = pStreamHandleCtx->fDeleteOnClose;
-                createData.IsExecute = pStreamHandleCtx->fIsExecute;
-
-                // Send event
-                if (ShouldReportFileEvent(pEvent)) {
-                    SendFileSystemEvent(pEvent);
-                }
-            }
-            FreeEventFromPool(pEvent);
-        }
-
-
+        // Send event for creation
+        SendFilesystemEvent(
+            FsEventType::FileCreate,
+            pStreamHandleCtx,
+            pInstCtx
+		);
     }
     __finally
     {
@@ -1329,6 +1271,7 @@ FLT_PREOP_CALLBACK_STATUS FLTAPI PreWrite(
         if (!info.fEnabled || writeParams.Length == 0)
             break;
 
+		// Get current file position
         UINT64 writePos = 
             (writeParams.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
             writeParams.ByteOffset.HighPart == -1) ?
@@ -1369,9 +1312,6 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostWrite(
     }
 
     PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
-    //PFLT_FILE_NAME_INFORMATION pNameInfo = NULL;
-    PFILE_SYSTEM_EVENT pEvent = NULL;
-
     __try
     {
         NTSTATUS status = FltGetStreamContext(
@@ -1496,7 +1436,6 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostRead(
     }
 
     PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
-    PFILE_SYSTEM_EVENT pEvent = NULL;
 
     __try
     {
@@ -1553,16 +1492,6 @@ FLT_PREOP_CALLBACK_STATUS FLTAPI PreSetFileInfo(
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
-    NTSTATUS status = FltGetStreamHandleContext(
-        pFltObjects->Instance,
-        pFltObjects->FileObject,
-        (PFLT_CONTEXT*)&pStreamHandleCtx);
-
-    if (!NT_SUCCESS(status) || pStreamHandleCtx == NULL)
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-
-
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
 
@@ -1581,8 +1510,6 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostSetFileInfo(
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
-    PFLT_FILE_NAME_INFORMATION pNameInfo = NULL;
-    PFILE_SYSTEM_EVENT pEvent = NULL;
     FILE_INFORMATION_CLASS infoClass = pData->Iopb->Parameters.SetFileInformation.FileInformationClass;
 
     PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
@@ -1595,17 +1522,12 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostSetFileInfo(
         return FLT_POSTOP_FINISHED_PROCESSING;
 
     __try {
-        NTSTATUS status = FltGetFileNameInformation(
-            pData,
-            FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
-            &pNameInfo);
+
 
         if (!NT_SUCCESS(status))
             return FLT_POSTOP_FINISHED_PROCESSING;
 
         // Determine operation type
-        FILE_OPERATION_TYPE operation = FILE_OP_SET_INFO;
-        auto eInfoClass = pData->Iopb->Parameters.SetFileInformation.FileInformationClass;
         if (infoClass == FileDispositionInformation)
         {
             pStreamHandleCtx->fDispositionDelete =
@@ -1621,8 +1543,8 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostSetFileInfo(
         }
     }
     __finally {
-        if (pNameInfo)
-            FltReleaseFileNameInformation(pNameInfo);
+        if (pStreamHandleCtx != nullptr)
+            FltReleaseContext(pStreamHandleCtx);
     }
 
     return FLT_POSTOP_FINISHED_PROCESSING;
@@ -1643,12 +1565,13 @@ FLT_PREOP_CALLBACK_STATUS FLTAPI PreCleanup(
     if (!g_Monitor)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
+	// Get stream handle context
     PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
     NTSTATUS status = FltGetStreamHandleContext(pFltObjects->Instance, pFltObjects->FileObject, (PFLT_CONTEXT*)&pStreamHandleCtx);
 
     if (!NT_SUCCESS(status) || pStreamHandleCtx == NULL)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
-
+	// Release context
     FltReleaseContext(pStreamHandleCtx);
     return FLT_PREOP_SYNCHRONIZE;
 }
@@ -1670,9 +1593,9 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCleanup(
 
     PINSTANCE_CONTEXT pInstCtx = NULL;
     PSTREAM_HANDLE_CONTEXT pStreamHandleCtx = NULL;
-    PFILE_SYSTEM_EVENT pEvent = NULL;
 
     __try {
+		// Get stream handle context
         NTSTATUS status = FltGetStreamHandleContext(
             pFltObjects->Instance,
             pFltObjects->FileObject,
@@ -1680,7 +1603,7 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCleanup(
 
         if (!NT_SUCCESS(status) || pStreamHandleCtx == NULL)
             return FLT_POSTOP_FINISHED_PROCESSING;
-
+		// Get instance context
         FltGetInstanceContext(
             pFltObjects->Instance,
             (PFLT_CONTEXT*)&pInstCtx);
@@ -1688,12 +1611,13 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCleanup(
         if (!NT_SUCCESS(status) || pInstCtx == NULL)
             return FLT_POSTOP_FINISHED_PROCESSING;
     
-    bool fFileWasDeleted = false;
-        if (pStreamHandleCtx->fDeleteOnClose ||
-            pStreamHandleCtx->fDispositionDelete)
-        {
-            fFileWasDeleted = true;
-        }
+        // Determine if file was deleted    
+        bool fFileWasDeleted = false;
+            if (pStreamHandleCtx->fDeleteOnClose ||
+                pStreamHandleCtx->fDispositionDelete)
+            {
+                fFileWasDeleted = true;
+            }
 
         // Send read if needed
         if (pStreamHandleCtx->SequenceReadInfo.fEnabled)
@@ -1701,21 +1625,14 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCleanup(
             do {
                 auto& readInfo = pStreamHandleCtx->SequenceReadInfo;
 
-				// Full file was read sequentially?
+				// Check file was red fully to the end
                 if (readInfo.nNextPos != pStreamHandleCtx->nSizeAtCreation)
                     break;
 
-				// TODO:: SEND SEQUENTIAL READ EVENT
-                //sendFileEvent(SysmonEvent::FileDataReadFull, pStreamHandleContext,
-                //    [&readInfo](auto pSerializer) {
-                //        return writeFileHash(pSerializer, readInfo);
-                //    }
-
-                // Log event
-
-                //LOGINFO2("FullRead: pid: %Iu, size:%I64u, hash:%016I64X, file:<%wZ>.\r\n",
-                //    (ULONG_PTR)pStreamHandleContext->nOpeningProcessId, readInfo.nNextPos, (uint64_t)readInfo.hash.digest(),
-                //    &pStreamHandleContext->pNameInfo->Name);
+                SendFilesystemEvent(
+                    FsEventType::FileDataRead,
+                    pStreamHandleCtx,
+                    pInstCtx);
 
             } while (false);
         }
@@ -1723,43 +1640,41 @@ FLT_POSTOP_CALLBACK_STATUS FLTAPI PostCleanup(
 		// Send write if needed
         if (pStreamHandleCtx->SequenceWriteInfo.fEnabled) 
         do{
-            auto& writeInfo = pStreamHandleCtx->SequenceWriteInfo;
             // Check file was not deleted
             if (fFileWasDeleted)
                 break;
 
-            // Todo:: send event
-            //sendFileEvent(SysmonEvent::FileDataWriteFull, pStreamHandleContext,
-            //    [&writeInfo](auto pSerializer) {
-            //        return writeFileHash(pSerializer, writeInfo);
-            //    }
-            //);
+            SendFilesystemEvent(
+				FsEventType::FileDataWrite,
+                pStreamHandleCtx,
+                pInstCtx);
 
-			// Log event
-            //LOGINFO2("FullWrite: pid: %Iu, size:%I64u, hash:%016I64X file:<%wZ>.\r\n",
-            //    (ULONG_PTR)pStreamHandleContext->nOpeningProcessId, writeInfo.nNextPos, (uint64_t)writeInfo.hash.digest(),
-            //    &pStreamHandleContext->pNameInfo->Name);
         }while (false);
 
 		// Send FileDataChange if changed and not deleted
         if (pStreamHandleCtx->fDirty != FALSE 
             && !fFileWasDeleted)
         {
-			// TODO:: send event
-            //sendFileEvent(SysmonEvent::FileDataChange, pStreamHandleContext);
+            SendFilesystemEvent(
+                FsEventType::FileChanged,
+                pStreamHandleCtx,
+                pInstCtx);
         }
 
         // Send FileDelete
         if (fFileWasDeleted &&
             pStreamHandleCtx->eCreationStatus != FILE_CREATION_STATUS::CREATED)
         {
-			// TODO:: send event
-            //sendFileEvent(SysmonEvent::FileDelete, pStreamHandleContext);
+            SendFilesystemEvent(
+                FsEventType::FileDelete,
+                pStreamHandleCtx,
+                pInstCtx);
         }
 
-        // TODO:: Send file close event
-		// sendFileEvent(SysmonEvent::FileClose, pStreamHandleContext);
-
+        SendFilesystemEvent(
+            FsEventType::FileClosed,
+            pStreamHandleCtx,
+            pInstCtx);
     }
     __finally {
         if (pStreamHandleCtx != NULL)

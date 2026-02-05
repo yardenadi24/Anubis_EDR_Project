@@ -59,7 +59,7 @@ CONST FLT_REGISTRATION c_FilterRegistration = {
 //=============================================================================
 
 NTSTATUS
-Initialize(
+InitializeFsMonitor(
     PDRIVER_OBJECT pDriverObj
 )
 {
@@ -100,7 +100,7 @@ Initialize(
     }
     __finally {
         if (!fSuccess) {
-            Finalize();
+            FinalizeFsMonitor();
         }
     }
 
@@ -110,7 +110,7 @@ Initialize(
 
 
 VOID 
-Finalize() 
+FinalizeFsMonitor()
 {
     g_Monitor = FALSE;
 
@@ -126,7 +126,7 @@ Finalize()
 NTSTATUS UnloadFilter(_In_ FLT_FILTER_UNLOAD_FLAGS Flags) {
     UNREFERENCED_PARAMETER(Flags);
     DbgInfo("Unloading filter");
-    Finalize();
+    FinalizeFsMonitor();
     return STATUS_SUCCESS;
 }
 

@@ -1,9 +1,10 @@
 #include "drv.h"
 #include "ProcessMonitor.h"
+#include "FileMonitorFilter.h"
 
 #define DEVICE_NAME L"\\Device\\AnubisEdrDevice"
 #define SYMLINK_NAME L"\\??\\AnubisEdrDevice"
-
+static PDRIVER_OBJECT g_pDriverObject = NULL;
 //PDEVICE_OBJECT g_pDeviceObject = NULL;
 
 NTSTATUS
@@ -23,7 +24,7 @@ DriverEntry(
 
 	do 
 	{
-
+		g_pDriverObject = pDriverObject;
 		Status = IoCreateDevice(
 			pDriverObject,
 			0,
@@ -96,6 +97,7 @@ DriverInitialize()
     NTSTATUS Status = STATUS_SUCCESS;
     DbgInfo("Initializing driver");
 	g_pProcMonitor = InitializeProcessMonitor();
+	InitializeFsMonitor(g_pDriverObject);
     if (!NT_SUCCESS(Status))
     {
         DbgError("Failed to initialize process monitor");
@@ -299,4 +301,6 @@ DriverUnload(PDRIVER_OBJECT DriverObject)
 	IoDeleteSymbolicLink(&SymLinkName);
 	IoDeleteDevice(g_pDeviceObject);
     UnInitializeProcessMonitor();
+	FinalizeFsMonitor();
+	DbgInfo("Driver unloaded");
 }

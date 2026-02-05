@@ -160,8 +160,8 @@ extern CONNECTION_CONTEXT g_ConnectionContext;
 //=============================================================================
 
 // Filter lifecycle
-NTSTATUS Initialize(PDRIVER_OBJECT pDriverObj);
-VOID Finalize();
+NTSTATUS InitializeFsMonitor(PDRIVER_OBJECT pDriverObj);
+VOID FinalizeFsMonitor();
 NTSTATUS UnloadFilter(_In_ FLT_FILTER_UNLOAD_FLAGS Flags);
 
 // Instance management

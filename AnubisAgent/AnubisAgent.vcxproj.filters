@@ -1,0 +1,94 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="agent">
+      <UniqueIdentifier>{00334d58-e857-437a-829e-17c5d9d6001f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="services">
+      <UniqueIdentifier>{c5c5ac18-4ef8-492a-857f-6522a35d6fe0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="managers">
+      <UniqueIdentifier>{0183bb27-c986-4137-82ed-9a63d46c165a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="commons">
+      <UniqueIdentifier>{05469684-20ef-4883-b22b-bd27d2375049}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="commons\logger">
+      <UniqueIdentifier>{5c14c0d2-bb01-45b7-b552-d0e1183babb7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utils">
+      <UniqueIdentifier>{c9db5b95-e995-43c5-a6e0-0dc51aa74d79}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="agent\agent.cpp">
+      <Filter>agent</Filter>
+    </ClCompile>
+    <ClCompile Include="services\anti_malware_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="services\process_monitor_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="services\filesystem_monitor_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="services\event_persistence_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="services\verdict_db_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="managers\service_manager.cpp">
+      <Filter>managers</Filter>
+    </ClCompile>
+    <ClCompile Include="commons\logger\logger.cpp">
+      <Filter>commons\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="managers\configuration_manager.cpp">
+      <Filter>managers</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\filesystem_utils.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="agent\agent.h">
+      <Filter>agent</Filter>
+    </ClInclude>
+    <ClInclude Include="services\service_interface.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="services\anti_malware_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="services\process_monitor_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="services\filesystem_monitor_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="services\event_persistence_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="services\verdict_db_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="managers\service_manager.h">
+      <Filter>managers</Filter>
+    </ClInclude>
+    <ClInclude Include="commons\commons.h">
+      <Filter>commons</Filter>
+    </ClInclude>
+    <ClInclude Include="commons\logger\logger.h">
+      <Filter>commons\logger</Filter>
+    </ClInclude>
+    <ClInclude Include="managers\configuration_manager.h">
+      <Filter>managers</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\filesystem_utils.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

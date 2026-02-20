@@ -1,0 +1,6 @@
+[submodule "AnubisAgent/third_party/rapidjson"]
+	path = AnubisAgent/third_party/rapidjson
+	url = https://github.com/Tencent/rapidjson.git
+[submodule "AnubisAgent/third_party/yara"]
+	path = AnubisAgent/third_party/yara
+	url = https://github.com/VirusTotal/yara.git

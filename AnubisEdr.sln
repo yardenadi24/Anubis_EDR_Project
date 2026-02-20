@@ -19,6 +19,16 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AnubisDriver", "AnubisDrive
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AnubisAgent", "AnubisAgent\AnubisAgent.vcxproj", "{AD2C381D-E572-4AD3-82F8-C1BE74E5BD8B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "shared_commons", "shared_commons", "{F186B20B-0974-4AB8-B57A-A93A049D1170}"
+	ProjectSection(SolutionItems) = preProject
+		shared_commons\shared_commons.h = shared_commons\shared_commons.h
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "configuration_file", "configuration_file", "{AD1EB6CF-555E-467F-B22C-F350E2C1CC35}"
+	ProjectSection(SolutionItems) = preProject
+		anubis_config.ini = anubis_config.ini
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64

@@ -59,18 +59,19 @@ bool ConfigurationManager::ReadIniFile(const std::string& filePath)
 	file.close();
 
 	// Buffer for section names
-	char* sectionNames = reinterpret_cast<char*>(new char[8192]);
+	size_t sectionNameSize = 8192; // 8KB buffer for section names
+	char* sectionNames = reinterpret_cast<char*>(new char[sectionNameSize]);
 
 	// Get all section names
 	DWORD sectionResult = GetPrivateProfileSectionNamesA(
 		sectionNames,
-		sizeof(sectionNames),
+		sectionNameSize,
 		filePath.c_str()
 	);
 
 	// Validate results
 	if (sectionResult == 0 ||
-		sectionResult >= sizeof(sectionNames) - 2)
+		sectionResult >= sectionNameSize - 2)
 	{
 		DWORD error = GetLastError();
 		m_logger.Error("ConfigManager", "Failed to read section names from: " + filePath + ", Error: " + std::to_string(error));
@@ -92,12 +93,12 @@ bool ConfigurationManager::ReadIniFile(const std::string& filePath)
 		DWORD keyResult = GetPrivateProfileSectionA(
 			section,
 			sectionData,
-			sizeof(sectionData),
+			sectionSize,
 			filePath.c_str()
 		);
 
 		if (keyResult == 0 ||
-			keyResult >= sizeof(sectionData) - 2)
+			keyResult >= sectionSize - 2)
 		{
 			DWORD error = GetLastError();
 			m_logger.Warning("ConfigManager", "Failed to read section data for: " + sectionName + ", Error: " + std::to_string(error));
@@ -108,17 +109,17 @@ bool ConfigurationManager::ReadIniFile(const std::string& filePath)
 		// Now parse the section using our helper method
 		// Convert the char array to a string - note that sectionData contains multiple
 		// null-terminated strings, so we need to handle this specially
-		ParseIniSection(sectionName, std::string(sectionData));
+		ParseIniSection(sectionName, sectionData, keyResult);
 
 		section += strlen(section) + 1;
 	}
-
-	delete sectionNames;
+	delete[] sectionData;
+	delete[] sectionNames;
 
 	return true;
 }
 
-bool ConfigurationManager::ParseIniSection(const std::string& sectionName, const std::string& sectionData)
+bool ConfigurationManager::ParseIniSection(const std::string& sectionName, const char* sectionData, DWORD dataLength)
 {
 	// Initialize the section in our configurations map if it doesn't exist
 	if (m_configurations.find(sectionName) == m_configurations.end()) {
@@ -127,9 +128,9 @@ bool ConfigurationManager::ParseIniSection(const std::string& sectionName, const
 
 	// The buffer from GetPrivateProfileSectionA contains null-terminated strings
 	// followed by an additional null character at the end
-	const char* data = sectionData.c_str();
-
-	while (*data)
+	const char* data = sectionData;
+	const char* dataEnd = sectionData + dataLength;
+	while (data < dataEnd && *data)
 	{
 		std::string line = data;
 		size_t delimPos = line.find('=');

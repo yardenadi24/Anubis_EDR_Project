@@ -18,7 +18,7 @@ private:
 
     // Helper methods
     bool ReadIniFile(const std::string& filePath);
-    bool ParseIniSection(const std::string& sectionName, const std::string& sectionData);
+    bool ParseIniSection(const std::string& sectionName, const char* sectionData, DWORD dataLength);
 
 public:
     ConfigurationManager();

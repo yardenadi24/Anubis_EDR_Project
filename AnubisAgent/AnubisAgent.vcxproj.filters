@@ -19,6 +19,18 @@
     <Filter Include="utils">
       <UniqueIdentifier>{c9db5b95-e995-43c5-a6e0-0dc51aa74d79}</UniqueIdentifier>
     </Filter>
+    <Filter Include="modules">
+      <UniqueIdentifier>{8fd78765-64b0-4292-a94e-9c11be8b1ba3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="third_party">
+      <UniqueIdentifier>{9506fafd-4591-4b31-ba38-9505e61c83b7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="third_party\yara">
+      <UniqueIdentifier>{113c533b-5dfb-49f3-b593-05be65ee7268}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="third_party\rapidjson">
+      <UniqueIdentifier>{26f531a6-7671-4c24-a708-1460adb8464a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="agent\agent.cpp">
@@ -52,6 +64,24 @@
       <Filter>utils</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="modules\verdict_db_module.cpp">
+      <Filter>modules</Filter>
+    </ClCompile>
+    <ClCompile Include="services\security_event_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\strings_utils.cpp">
+      <Filter>utils</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\yara_module.cpp">
+      <Filter>modules</Filter>
+    </ClCompile>
+    <ClCompile Include="services\network_monitor_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="services\monitoring_event_service.cpp">
+      <Filter>services</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="agent\agent.h">
@@ -89,6 +119,27 @@
     </ClInclude>
     <ClInclude Include="utils\filesystem_utils.h">
       <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="modules\security_module_interface.h">
+      <Filter>modules</Filter>
+    </ClInclude>
+    <ClInclude Include="modules\verdict_db_module.h">
+      <Filter>modules</Filter>
+    </ClInclude>
+    <ClInclude Include="services\security_event_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\strings_utils.h">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="modules\yara_module.h">
+      <Filter>modules</Filter>
+    </ClInclude>
+    <ClInclude Include="services\network_monitor_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="services\monitoring_event_service.h">
+      <Filter>services</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

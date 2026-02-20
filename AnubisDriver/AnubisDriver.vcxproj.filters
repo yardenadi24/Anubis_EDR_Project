@@ -1,2 +1,38 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" />
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="commons">
+      <UniqueIdentifier>{6d8176c1-9d52-4eb8-9f61-988e413a1f61}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="monitors">
+      <UniqueIdentifier>{712a8e0e-fef8-4f28-9b2b-d371a51e161a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="commons\commons.h">
+      <Filter>commons</Filter>
+    </ClInclude>
+    <ClInclude Include="drv.h" />
+    <ClInclude Include="monitors\process_monitor.h">
+      <Filter>monitors</Filter>
+    </ClInclude>
+    <ClInclude Include="monitors\filesystem_monitor.h">
+      <Filter>monitors</Filter>
+    </ClInclude>
+    <ClInclude Include="monitors\network_monitor.h">
+      <Filter>monitors</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="drv.cpp" />
+    <ClCompile Include="monitors\process_monitor.cpp">
+      <Filter>monitors</Filter>
+    </ClCompile>
+    <ClCompile Include="monitors\filesystem_monitor.cpp">
+      <Filter>monitors</Filter>
+    </ClCompile>
+    <ClCompile Include="monitors\network_monitor.cpp">
+      <Filter>monitors</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

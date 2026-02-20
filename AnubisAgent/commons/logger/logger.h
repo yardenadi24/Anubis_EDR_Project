@@ -39,6 +39,7 @@ private:
     LogLevel m_log_level;
     std::mutex m_log_mutex;
 	HANDLE m_log_file_handle;
+	bool m_initialized;
 
     const std::string m_name = "AnubisLogger";
 

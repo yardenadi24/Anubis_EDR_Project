@@ -7,7 +7,8 @@
 // Private constructor for singleton pattern
 Logger::Logger() : 
     m_log_level(LogLevel::LOG_INFO),
-    m_log_file_handle(INVALID_HANDLE_VALUE)
+    m_log_file_handle(INVALID_HANDLE_VALUE),
+    m_initialized(false)
 {}
 
 Logger::~Logger() {
@@ -39,6 +40,12 @@ bool Logger::Initialize(const std::string& log_path, LogLevel level)
 {
     {
         std::lock_guard<std::mutex> lock(m_log_mutex);
+
+        if(m_initialized)
+        {
+            std::cerr << "Logger is already initialized" << std::endl;
+            return true;
+		}
 
         m_log_level = level;
         m_log_path = log_path;
@@ -78,6 +85,7 @@ bool Logger::Initialize(const std::string& log_path, LogLevel level)
 
     // Log initialization message
     Log(LogLevel::LOG_INFO, "Logger", "Logger initialized");
+	m_initialized = true;
     return true;
 }
 

@@ -7,6 +7,8 @@
 #include "service_interface.h"
 #include "Logger.h"
 
+#define DEFAULT_DB_FILE "C:\\ProgramData\\Anubis\\Database\\verdictdb.json"
+
 // Verdict types
 enum class HashVerdict {
     UNKNOWN = 0,

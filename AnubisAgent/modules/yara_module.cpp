@@ -189,14 +189,25 @@ BOOL YaraModule::AnalyzeFile(const std::string& filePath, AnalysisResult& result
         }
 
         // If we already have enough detections to block, stop scanning
-        if (result.shouldBlock && m_blockOnDetection) {
-            break;
-        }
-
         if (!result.detections.empty() && m_blockOnDetection)
         {
             result.shouldBlock = TRUE;
-            result.reason = "YARA rule matches detected";
+            result.reason = "YARA rule match (" + std::to_string(result.detections.size()) + " rule(s))";
+
+            // Module provides its own detection details for the alert
+            result.details = "Detection: YARA signature match\r\n"
+                "Rules matched: " + std::to_string(result.detections.size()) + "\r\n\r\n";
+
+            for (size_t i = 0; i < result.detections.size(); i++) {
+                result.details += "  " + std::to_string(i + 1) + ". " + result.detections[i] + "\r\n";
+            }
+
+            // Module provides its own metadata for the security event
+            result.metadata["detection_method"] = "yara_signature";
+            result.metadata["rules_matched"] = std::to_string(result.detections.size());
+            for (size_t i = 0; i < result.detections.size(); i++) {
+                result.metadata["rule_" + std::to_string(i + 1)] = result.detections[i];
+            }
 
             std::string detailsLog = "Blocking file: " + filePath + ", Detections: ";
             for (const auto& detection : result.detections) {
@@ -205,7 +216,8 @@ BOOL YaraModule::AnalyzeFile(const std::string& filePath, AnalysisResult& result
             m_logger.Warning(m_name, detailsLog);
         }
         else {
-            m_logger.Info(m_name, "File scan completed: " + filePath + ", Verdict: " + (result.shouldBlock ? "BLOCK" : "ALLOW"));
+            m_logger.Info(m_name, "File scan completed: " + filePath + ", Verdict: " +
+                (result.shouldBlock ? "BLOCK" : "ALLOW"));
         }
     }
 

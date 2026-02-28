@@ -8,10 +8,13 @@ class AnalysisResult {
 public:
     AnalysisResult() : shouldBlock(FALSE), shouldContinue(FALSE) {}
     ~AnalysisResult() = default;
+
     BOOL shouldBlock;           // TRUE = block, FALSE = allow
     std::string moduleName;     // Name of the module that made the decision
-    std::string reason;         // Reason for the verdict
+    std::string reason;         // Short reason for the verdict (one-liner)
+    std::string details;        // Detailed description of the detection (multi-line, shown in alert)
     std::vector<std::string> detections;  // List of specific detections if any
+    std::map<std::string, std::string> metadata;  // Module-provided key-value pairs for the security event
     BOOL shouldContinue;
 };
 

@@ -174,14 +174,30 @@ BOOL VerdictDbModule::AnalyzeFile(const std::string& filePath, AnalysisResult& r
         result.shouldBlock = FALSE;
         result.shouldContinue = !m_stopOnAllow;
         result.reason = "File hash is allowed in Verdict DB";
+        result.details = "Hash (" + m_hashAlgorithm + "): " + fileHash + "\r\nVerdict: ALLOWED";
+        result.metadata["detection_method"] = "hash_lookup";
+        result.metadata["hash_algorithm"] = m_hashAlgorithm;
+        result.metadata["matched_hash"] = fileHash;
         break;
 
     case HashVerdict::BLOCK:
         m_logger.Warning(m_name, "Hash is blocked: " + fileHash);
         result.shouldBlock = TRUE;
         result.shouldContinue = !m_stopOnBlock;
-        result.reason = "File hash is blocked in Verdict DB";
+        result.reason = "Known malicious file hash";
+
+        // Module provides its own detection details for the alert
+        result.details = "Detection: Known malicious file hash\r\n"
+            "Hash (" + m_hashAlgorithm + "): " + fileHash + "\r\n"
+            "Source: Verdict Database lookup";
+
         result.detections.push_back("Hash match: " + fileHash);
+
+        // Module provides its own metadata for the security event
+        result.metadata["detection_method"] = "hash_lookup";
+        result.metadata["hash_algorithm"] = m_hashAlgorithm;
+        result.metadata["matched_hash"] = fileHash;
+
         break;
 
     case HashVerdict::UNKNOWN:
@@ -190,6 +206,8 @@ BOOL VerdictDbModule::AnalyzeFile(const std::string& filePath, AnalysisResult& r
         result.shouldBlock = FALSE;
         result.shouldContinue = TRUE;
         result.reason = "File hash not found in database";
+        result.metadata["hash_algorithm"] = m_hashAlgorithm;
+        result.metadata["checked_hash"] = fileHash;
         break;
     }
 

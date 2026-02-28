@@ -30,6 +30,16 @@ bool SecurityEventService::Initialize()
     if (!LoadConfiguration()) {
         m_logger.Warning(m_name, "Failed to load configuration, using defaults");
     }
+    
+    if (m_showAlerts) {
+        HINSTANCE hInstance = GetModuleHandle(NULL);
+        if (SecurityAlertWindow::Initialize(hInstance)) {
+            m_logger.Info(m_name, "SecurityAlertWindow initialized successfully");
+        }
+        else {
+            m_logger.Warning(m_name, "SecurityAlertWindow initialization failed");
+        }
+    }
 
     m_state = ServiceState::STOPPED;
     return true;
@@ -142,11 +152,6 @@ std::string SecurityEventService::CreateEvent(
         else {
             m_logger.Warning(m_name, "EventPersistence service not available");
         }
-    }
-
-    // Queue alert if needed (direct alert from detection path)
-    if (shouldAlert && m_showAlerts) {
-        QueueAlert(event);
     }
 
     // Notify registered callbacks

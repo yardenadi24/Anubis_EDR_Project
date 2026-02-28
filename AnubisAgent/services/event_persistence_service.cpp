@@ -125,6 +125,12 @@ bool EventPersistenceService::SaveEvent(const SecurityEvent& event)
     return true;
 }
 
+void EventPersistenceService::SetOnEventSavedCallback(EventSavedCallback callback)
+{
+    std::lock_guard<std::mutex> lock(m_callbackMutex);
+    m_onEventSaved = callback;
+}
+
 void EventPersistenceService::SaveThreadProc() 
 {
     m_logger.Info(m_name, "Save thread started");
@@ -160,6 +166,17 @@ void EventPersistenceService::SaveThreadProc()
             if (SerializeEventToJson(event, jsonStr)) {
                 if (WriteEventToFile(event, jsonStr)) {
                     m_logger.Info(m_name, "Successfully saved event to file: " + event.id);
+                    {
+                        std::lock_guard<std::mutex> lock(m_callbackMutex);
+                        if (m_onEventSaved) {
+                            try {
+                                m_onEventSaved(event);
+                            }
+                            catch (const std::exception& e) {
+                                m_logger.Error(m_name, "On-save callback error: " + std::string(e.what()));
+                            }
+                        }
+                    }
                 }
                 else {
                     m_logger.Error(m_name, "Failed to write event to file: " + event.id);
@@ -193,18 +210,17 @@ bool EventPersistenceService::SerializeEventToJson(const SecurityEvent& event, s
         document.AddMember("fileName", rapidjson::Value(event.fileName.c_str(), allocator), allocator);
         document.AddMember("publisher", rapidjson::Value(event.publisher.c_str(), allocator), allocator);
         document.AddMember("severity", rapidjson::Value(SeverityToString(event.severity).c_str(), allocator), allocator);
+        document.AddMember("shouldAlert", event.shouldAlert, allocator);
 
-        // Convert timestamp to ISO string
+        // Timestamp
         auto time_t_value = std::chrono::system_clock::to_time_t(event.timestamp);
         std::tm tm_value;
         localtime_s(&tm_value, &time_t_value);
-
         char timeBuffer[64];
-        std::strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%dT%H:%M:%S", &tm_value);
-
+        strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%dT%H:%M:%S", &tm_value);
         document.AddMember("timestamp", rapidjson::Value(timeBuffer, allocator), allocator);
 
-        // Add metadata as a nested object
+        // Metadata
         rapidjson::Value metadataObj(rapidjson::kObjectType);
         for (const auto& pair : event.metadata) {
             metadataObj.AddMember(
@@ -215,7 +231,7 @@ bool EventPersistenceService::SerializeEventToJson(const SecurityEvent& event, s
         }
         document.AddMember("metadata", metadataObj, allocator);
 
-        // Serialize to string with pretty formatting
+        // Serialize to string
         rapidjson::StringBuffer buffer;
         rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
         document.Accept(writer);

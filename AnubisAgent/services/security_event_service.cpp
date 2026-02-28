@@ -1,6 +1,7 @@
 #include "security_event_service.h"
 #include "service_manager.h"
 #include "event_persistence_service.h"
+#include "security_alert.h"
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -74,6 +75,8 @@ void SecurityEventService::Stop()
         m_alertThread.join();
     }
 
+    SecurityAlertWindow::Shutdown();
+
     m_state = ServiceState::STOPPED;
     m_logger.Info(m_name, "Security event service stopped");
 }
@@ -141,12 +144,9 @@ std::string SecurityEventService::CreateEvent(
         }
     }
 
-    // Queue alert if needed
+    // Queue alert if needed (direct alert from detection path)
     if (shouldAlert && m_showAlerts) {
-        std::lock_guard<std::mutex> lock(m_alertQueueMutex);
-        m_alertQueue.push(event);
-        m_alertCondition.notify_one();
-        m_logger.Info(m_name, "Event queued for alert: " + event.id);
+        QueueAlert(event);
     }
 
     // Notify registered callbacks
@@ -165,6 +165,63 @@ std::string SecurityEventService::CreateEvent(
     return event.id;
 }
 
+void SecurityEventService::QueueAlert(const SecurityEvent& event)
+{
+    if (!m_showAlerts || !m_isRunning) return;
+
+    {
+        std::lock_guard<std::mutex> lock(m_alertQueueMutex);
+        m_alertQueue.push(event);
+    }
+    m_alertCondition.notify_one();
+    m_logger.Info(m_name, "Event queued for alert: " + event.id);
+}
+
+void SecurityEventService::AlertThreadProc()
+{
+    m_logger.Info(m_name, "Alert thread started");
+
+    while (m_isRunning) 
+    {
+        SecurityEvent event;
+        bool hasEvent = false;
+
+        {
+            std::unique_lock<std::mutex> lock(m_alertQueueMutex);
+
+            // Wait for an alert event or stop signal
+            m_alertCondition.wait(lock, [this]() {
+                return !m_isRunning || !m_alertQueue.empty();
+                });
+
+            // Check for shutdown
+            if (!m_isRunning && m_alertQueue.empty()) {
+                break;
+            }
+
+            // Dequeue next alert
+            if (!m_alertQueue.empty()) {
+                event = m_alertQueue.front();
+                m_alertQueue.pop();
+                hasEvent = true;
+            }
+        }
+
+        if (hasEvent) {
+            m_logger.Info(m_name, "Showing alert for event: " + event.id
+                + " [Severity: " + std::to_string(static_cast<int>(event.severity)) + "]");
+
+            // Show the Win32 alert window (non-blocking - spawns its own UI thread)
+            SecurityAlertWindow::ShowAlert(event);
+
+            // Small delay between alerts to avoid overwhelming the user
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    }
+
+    m_logger.Info(m_name, "Alert thread exited");
+}
+
 void SecurityEventService::RegisterEventCallback(EventCallback callback) 
 {
     std::lock_guard<std::mutex> lock(m_callbackMutex);
@@ -177,6 +234,28 @@ bool SecurityEventService::LoadConfiguration()
     auto it = m_config.find("ShowAlerts");
     if (it != m_config.end()) {
         m_showAlerts = (it->second == "true" || it->second == "1" || it->second == "yes");
+    }
+
+    it = m_config.find("AlertTimeoutMs");
+    if (it != m_config.end()) {
+        try {
+            UINT timeout = std::stoul(it->second);
+            SecurityAlertWindow::SetAutoCloseTimeoutMs(timeout);
+        }
+        catch (...) {
+            m_logger.Warning(m_name, "Invalid AlertTimeoutMs value, using default");
+        }
+    }
+
+    it = m_config.find("MaxConcurrentAlerts");
+    if (it != m_config.end()) {
+        try {
+            int maxAlerts = std::stoi(it->second);
+            SecurityAlertWindow::SetMaxConcurrentAlerts(maxAlerts);
+        }
+        catch (...) {
+            m_logger.Warning(m_name, "Invalid MaxConcurrentAlerts value, using default");
+        }
     }
 
     m_logger.Info(m_name, "Configuration loaded: ShowAlerts=" + std::string(m_showAlerts ? "true" : "false"));

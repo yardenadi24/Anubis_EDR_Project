@@ -1,7 +1,7 @@
 #pragma once
 #include "shared_commons.h"
 #include <chrono>
-#include <unordered_map>
+#include <map>
 
 // Callback function type for anti-malware scanning
 typedef void (*ScanResultCallback)(bool verdict, void* context);

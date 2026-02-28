@@ -67,9 +67,11 @@ public:
 
     // Register a callback for event notifications
     void RegisterEventCallback(EventCallback callback);
+    void QueueAlert(const SecurityEvent& event);
 
 private:
     bool LoadConfiguration();
     std::string GenerateEventId();
     std::string ExtractFileName(const std::string& filePath);
+    void AlertThreadProc();
 };

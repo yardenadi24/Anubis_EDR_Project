@@ -31,6 +31,9 @@
     <Filter Include="third_party\rapidjson">
       <UniqueIdentifier>{26f531a6-7671-4c24-a708-1460adb8464a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ui">
+      <UniqueIdentifier>{1fcc29a8-48ac-4506-8f18-a90428c7b4ac}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="agent\agent.cpp">
@@ -81,6 +84,9 @@
     </ClCompile>
     <ClCompile Include="services\monitoring_event_service.cpp">
       <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\security_alert.cpp">
+      <Filter>ui</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -140,6 +146,9 @@
     </ClInclude>
     <ClInclude Include="services\monitoring_event_service.h">
       <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\security_alert.h">
+      <Filter>ui</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

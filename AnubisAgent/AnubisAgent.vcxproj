@@ -34,6 +34,7 @@
     <ClCompile Include="services\process_monitor_service.cpp" />
     <ClCompile Include="services\security_event_service.cpp" />
     <ClCompile Include="services\verdict_db_service.cpp" />
+    <ClCompile Include="ui\security_alert.cpp" />
     <ClCompile Include="utils\filesystem_utils.cpp" />
     <ClCompile Include="utils\strings_utils.cpp" />
   </ItemGroup>
@@ -55,6 +56,7 @@
     <ClInclude Include="services\security_event_service.h" />
     <ClInclude Include="services\service_interface.h" />
     <ClInclude Include="services\verdict_db_service.h" />
+    <ClInclude Include="ui\security_alert.h" />
     <ClInclude Include="utils\filesystem_utils.h" />
     <ClInclude Include="utils\strings_utils.h" />
   </ItemGroup>
@@ -142,7 +144,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)AnubisAgent\;$(SolutionDir)AnubisAgent\commons\logger\;$(SolutionDir)AnubisAgent\commons\;$(SolutionDir)AnubisAgent\managers\;$(SolutionDir)AnubisAgent\services\;$(SolutionDir)AnubisAgent\utils\;$(SolutionDir)AnubisAgent\modules\;$(SolutionDir)AnubisAgent\third_party\rapidjson\include\;$(SolutionDir)AnubisAgent\third_party\yara\libyara\include;$(SolutionDir)AnubisAgent\third_party\yara\windows\vs2019\libyara\Debug;$(SolutionDir)shared_commons\</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)AnubisAgent\;$(SolutionDir)AnubisAgent\commons\logger\;$(SolutionDir)AnubisAgent\commons\;$(SolutionDir)AnubisAgent\managers\;$(SolutionDir)AnubisAgent\services\;$(SolutionDir)AnubisAgent\utils\;$(SolutionDir)AnubisAgent\modules\;$(SolutionDir)AnubisAgent\third_party\rapidjson\include\;$(SolutionDir)AnubisAgent\third_party\yara\libyara\include;$(SolutionDir)AnubisAgent\third_party\yara\windows\vs2019\libyara\Debug;$(SolutionDir)shared_commons\;$(SolutionDir)AnubisAgent\ui</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp23</LanguageStandard>
     </ClCompile>
     <Link>

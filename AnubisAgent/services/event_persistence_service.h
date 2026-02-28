@@ -13,6 +13,11 @@
 #include <condition_variable>
 #include <atomic>
 #include "commons.h"
+#include <functional>
+
+// Callback type for post-save notifications
+typedef std::function<void(const SecurityEvent&)> EventSavedCallback;
+
 
 class EventPersistenceService : public IService {
 private:
@@ -33,6 +38,8 @@ private:
     // Configuration
     std::string m_eventDirectory;
 
+    EventSavedCallback m_onEventSaved;
+    std::mutex m_callbackMutex;
 public:
     EventPersistenceService();
     ~EventPersistenceService();
@@ -48,6 +55,7 @@ public:
 
     // Event persistence
     bool SaveEvent(const SecurityEvent& event);
+    void SetOnEventSavedCallback(EventSavedCallback callback);
 
 private:
     void SaveThreadProc();

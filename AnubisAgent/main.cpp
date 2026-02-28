@@ -120,6 +120,14 @@ int main(int argc, char* argv[]) {
     auto monitoringEventService = std::make_shared<MonitoringEventService>();
     serviceManager->RegisterService(monitoringEventService);
 
+    eventPersistenceService->SetOnEventSavedCallback(
+        [securityEventService](const SecurityEvent& event) {
+            // Only trigger alert for events that are flagged
+            if (event.shouldAlert) {
+                securityEventService->QueueAlert(event);
+            }
+        }
+    );
 
     {
         HANDLE hDev = CreateFileW(L"\\\\.\\AnubisEdrDevice", GENERIC_READ | GENERIC_WRITE,

@@ -47,10 +47,10 @@ bool SecurityEventService::Start()
     m_state = ServiceState::STARTING;
     m_isRunning = true;
 
-    //// Start alert thread if alerts are enabled
-    //if (m_showAlerts) {
-    //    m_alertThread = std::thread(&SecurityEventService::AlertThreadProc, this);
-    //}
+    // Start alert thread if alerts are enabled
+    if (m_showAlerts) {
+        m_alertThread = std::thread(&SecurityEventService::AlertThreadProc, this);
+    }
 
     m_state = ServiceState::RUNNING;
     m_logger.Info(m_name, "Security event service started");

@@ -4,6 +4,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <filesystem>
 #include "service_interface.h"
 #include "Logger.h"
 
@@ -65,8 +66,10 @@ public:
     // Hash database operations
     HashVerdict GetHashVerdict(const std::string& hash);
     bool AddHashEntry(const HashEntry& entry);
+    bool AddOrUpdateHashEntry(const std::string& hash, HashVerdict verdict, const std::string& description = "");
     bool UpdateHashEntry(const HashEntry& entry);
     bool DeleteHashEntry(const std::string& hash);
+    size_t GetEntryCount() const;
 
     // Database file operations
     bool LoadDatabase();
@@ -78,4 +81,7 @@ private:
     bool SaveDatabaseToFile(const std::string& filePath);
     bool ParseJsonDatabase(const std::string& jsonData);
     std::string GenerateJsonDatabase();
+    // Helpers
+    void EnsureDirectoryExists(const std::string& filePath);
+    static std::string VerdictToString(HashVerdict verdict);
 };

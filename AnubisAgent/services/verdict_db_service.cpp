@@ -11,16 +11,23 @@
 #include "rapidjson/prettywriter.h" // For nice formatting
 
 VerdictDbService::VerdictDbService()
-    :m_state(ServiceState::STOPPED),
+    : m_state(ServiceState::STOPPED),
     m_serviceManager(nullptr),
     m_logger(Logger::GetInstance()),
     m_isDirty(false)
 {
 }
 
+
 VerdictDbService::~VerdictDbService() {
+    // Last-resort save in case Stop() wasn't called
     if (m_isDirty) {
-        SaveDatabase(); // Save any unsaved changes
+        try {
+            SaveDatabase();
+        }
+        catch (...) {
+            // Destructor must not throw
+        }
     }
 }
 
@@ -55,9 +62,21 @@ bool VerdictDbService::Initialize()
 
     }
 
+    EnsureDirectoryExists(m_dbFilePath);
+
     // Try to load the database
-    if (!LoadDatabase()) {
-        m_logger.Warning(m_name, "Failed to load verdict database, starting with empty database");
+    if (std::filesystem::exists(m_dbFilePath)) {
+        if (!LoadDatabase()) {
+            m_logger.Warning(m_name, "Failed to load verdict database, starting with empty database");
+        }
+        else {
+            m_logger.Info(m_name, "Loaded verdict database with " +
+                std::to_string(m_hashDb.size()) + " entries from file");
+        }
+    }
+    else {
+        m_logger.Info(m_name, "No existing database file found at " + m_dbFilePath +
+            ", starting with empty database (will be created on save)");
     }
 
     m_state = ServiceState::STOPPED;
@@ -75,6 +94,33 @@ std::string VerdictDbService::CalculateFileHash(const std::string& filePath) {
 
     // Default to SHA256
     return CalculateFileSHA256(filePath);
+}
+
+void VerdictDbService::EnsureDirectoryExists(const std::string& filePath)
+{
+    try {
+        std::filesystem::path p(filePath);
+        std::filesystem::path parentDir = p.parent_path();
+
+        if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
+            std::filesystem::create_directories(parentDir);
+            m_logger.Info(m_name, "Created directory: " + parentDir.string());
+        }
+    }
+    catch (const std::filesystem::filesystem_error& e) {
+        m_logger.Error(m_name, "Failed to create directory for: " + filePath +
+            ", Error: " + std::string(e.what()));
+    }
+}
+
+std::string VerdictDbService::VerdictToString(HashVerdict verdict)
+{
+    switch (verdict) {
+    case HashVerdict::ALLOW:    return "ALLOW";
+    case HashVerdict::BLOCK:    return "BLOCK";
+    case HashVerdict::UNKNOWN:  return "UNKNOWN";
+    default:                    return "INVALID(" + std::to_string(static_cast<int>(verdict)) + ")";
+    }
 }
 
 std::string VerdictDbService::CalculateFileSHA256(const std::string& filePath)
@@ -264,12 +310,18 @@ void VerdictDbService::Stop()
 
     // Save the database if it has unsaved changes
     if (m_isDirty) {
+        m_logger.Info(m_name, "Database has unsaved changes (" +
+            std::to_string(m_hashDb.size()) + " entries), saving to file...");
+
         if (SaveDatabase()) {
-            m_logger.Info(m_name, "Saved verdict database before stopping");
+            m_logger.Info(m_name, "Successfully saved verdict database to: " + m_dbFilePath);
         }
         else {
-            m_logger.Error(m_name, "Failed to save verdict database before stopping");
+            m_logger.Error(m_name, "Failed to save verdict database to: " + m_dbFilePath);
         }
+    }
+    else {
+        m_logger.Info(m_name, "No unsaved changes, skipping save");
     }
 
     m_state = ServiceState::STOPPED;
@@ -343,6 +395,37 @@ bool VerdictDbService::AddHashEntry(const HashEntry& entry)
     return true;
 }
 
+bool VerdictDbService::AddOrUpdateHashEntry(const std::string& hash, HashVerdict verdict, const std::string& description)
+{
+    std::lock_guard<std::mutex> lock(m_hashDbMutex);
+
+    auto it = m_hashDb.find(hash);
+    if (it != m_hashDb.end()) {
+        // Update existing
+        it->second.verdict = verdict;
+        if (!description.empty()) {
+            it->second.description = description;
+        }
+        it->second.isLocal = true;
+    }
+    else {
+        // Add new
+        HashEntry entry;
+        entry.hash = hash;
+        entry.verdict = verdict;
+        entry.description = description;
+        entry.isLocal = true;
+        m_hashDb[hash] = entry;
+    }
+
+    m_isDirty = true;
+
+    m_logger.Info(m_name, "Added/updated hash in database: " + hash +
+        ", Verdict: " + VerdictToString(verdict));
+
+    return true;
+}
+
 bool VerdictDbService::UpdateHashEntry(const HashEntry& entry) 
 {
     std::lock_guard<std::mutex> lock(m_hashDbMutex);
@@ -386,6 +469,11 @@ bool VerdictDbService::DeleteHashEntry(const std::string& hash)
     return true;
 }
 
+size_t VerdictDbService::GetEntryCount() const
+{
+    return m_hashDb.size();
+}
+
 bool VerdictDbService::LoadDatabase() 
 {
     return LoadDatabaseFromFile(m_dbFilePath);
@@ -409,6 +497,11 @@ bool VerdictDbService::ReloadDatabase()
 bool VerdictDbService::LoadDatabaseFromFile(const std::string& filePath) 
 {
 
+    if (!std::filesystem::exists(filePath)) {
+        m_logger.Info(m_name, "Database file does not exist yet: " + filePath);
+        return false;
+    }
+
     std::ifstream file(filePath);
     if (!file.is_open()) {
         m_logger.Error(m_name, "Failed to open database file: " + filePath);
@@ -419,6 +512,14 @@ bool VerdictDbService::LoadDatabaseFromFile(const std::string& filePath)
     std::stringstream buffer;
     buffer << file.rdbuf();
     file.close();
+
+    std::string content = buffer.str();
+
+    // Treat empty file as valid (0 entries) instead of parse error
+    if (content.empty()) {
+        m_logger.Info(m_name, "Database file is empty, starting with 0 entries");
+        return true;
+    }
 
     // Parse the JSON data
     bool success = ParseJsonDatabase(buffer.str());
@@ -436,6 +537,8 @@ bool VerdictDbService::LoadDatabaseFromFile(const std::string& filePath)
 
 bool VerdictDbService::SaveDatabaseToFile(const std::string& filePath) 
 {
+    EnsureDirectoryExists(filePath);
+
     // Generate JSON from the database
     std::string jsonData = GenerateJsonDatabase();
 

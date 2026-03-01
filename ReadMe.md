@@ -20,6 +20,7 @@ A modular **Endpoint Detection and Response** framework for Windows. Kernel-mode
 - [Installation & Running](#installation--running)
 - [Configuration](#configuration)
 - [License](#license)
+- [Demo](#Demo)
 
 ---
 
@@ -155,3 +156,6 @@ The agent reads an **INI file**. Each service has its own `[Section]`. Configura
 ## License
 
 This project is provided for **educational and research purposes**.
+
+## Demo
+[![Watch Demo](https://img.shields.io/badge/▶_Watch_Demo-Streamable-blue?style=for-the-badge)](https://streamable.com/94yf24)
